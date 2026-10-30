@@ -62,7 +62,7 @@ aplikace nebyla restartována.
 
 ## Detaily uzlů/resources a výstupy akcí
 
-2026-10-30: 129 úspěšných testů, locked restore a Release build bez warnings.
+2026-10-30: 130 úspěšných testů, locked restore a Release build bez warnings.
 Audity npm a NuGet bez nalezených zranitelností.
 
 - Testy ověřují předání úspěšného i chybového `message`, UTF-8 limit 4096 bajtů,
@@ -72,6 +72,10 @@ Audity npm a NuGet bez nalezených zranitelností.
   na uzel/resource předchází limitu posledních 50 položek.
 - Read-only status se před odesláním znovu ověřuje. Změněný mutační preview se odmítne
   bez POST; vlastní task/script status vyžaduje potvrzení.
+- První Linux CI odhalilo souběh při vytvoření submission markeru přes rename.
+  Marker nyní používá výhradní CreateNew přímo v cílové cestě; i neúplný marker
+  blokuje opakované odeslání. Regresní test opakuje 32 současných pokusů z různých
+  instancí journalu a vyžaduje právě jedno přijetí, včetně následného načtení z disku.
 - Browser QA na syntetickém loopback API: dashboard → uzly → uzel → resource → logy
   a zpět, přechod mezi resources stejné routy bez starého výstupu, okamžitý status,
   načtení výstupu z historie, zrušený script status a potvrzená syntetická restart akce.

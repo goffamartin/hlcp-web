@@ -44,8 +44,22 @@ public sealed class OperationJournal(string directory)
 
     public async Task<bool> MarkSubmittedAsync(string id)
     {
-        try { await WriteNewAsync(PathFor(id, ".submitted"), new { SubmittedAt = DateTimeOffset.UtcNow }, CancellationToken.None); return true; }
-        catch (IOException) when (File.Exists(PathFor(id, ".submitted"))) { return false; }
+        var path = PathFor(id, ".submitted");
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.Read, Options = FileOptions.WriteThrough };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        FileStream stream;
+        // Claim the final marker with exclusive creation. File.Move(overwrite: false)
+        // may race on Unix between its existence check and rename. Marker contents
+        // are never read: even a partial marker must prevent a second submission.
+        try { stream = new FileStream(path, options); }
+        catch (IOException) when (File.Exists(path)) { return false; }
+        await using (stream)
+        {
+            await JsonSerializer.SerializeAsync(stream, new { SubmittedAt = DateTimeOffset.UtcNow }, Json);
+            await stream.FlushAsync();
+            stream.Flush(flushToDisk: true);
+        }
+        return true;
     }
 
     public async Task SaveResultAsync(string id, CommandResult result)
