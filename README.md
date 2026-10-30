@@ -11,8 +11,9 @@ HLCP controller/agents remain in Go/CBOR; this repository is a separate client.
 The UI supports one admin login, a refreshing dashboard, node/tag filters, individual
 allowlisted resource actions with preview/confirmation, and web-originated operation
 history/result lookup, and filtered container log history/live streaming. No Identity
-account system, roles or database is required. MCP remains planned. Non-Development startup is still refused until
-HTTPS and deployment hardening are completed.
+account system, roles or database is required. MCP remains planned. Production requires
+an explicit canonical HTTPS origin, private external state and a trusted local reverse
+proxy; the backend always stays on loopback. Real HomeLab acceptance is still pending.
 
 Controller access requires explicitly configured server-side token files. Without
 them the dashboard displays a connection/configuration error, never demo data.
@@ -63,6 +64,19 @@ The [API client boundary](docs/api-client.md) and tests use only synthetic data.
 CI never needs HomeLab credentials.
 The project-relative publish property also avoids MSBuild command-line parsing
 issues with spaces/commas in a Windows checkout path.
+
+## LAN deployment candidate
+
+[Deployment guide (Czech)](docs/lan-deployment.md): `hlcp.home.goffa.cz`, AdGuard DNS,
+Nginx, Certbot Cloudflare DNS-01 and a separate systemd account. No public tunnel or
+router port forwarding is required. Review the VM, IP ranges and existing services
+before installing anything; the guide keeps controller credentials and state separate.
+
+CI builds a self-contained `linux-x64` candidate, checks startup/proxy restrictions
+without controller credentials and uploads the archive/checksum as the seven-day
+`hlcp-web-linux-x64` artifact. This is not an automatic release or deployment.
+On a clean Linux checkout, `sh scripts/package-linux.sh` produces the same artifact
+layout. The target needs native OS dependencies, but no SDK, Node or system .NET.
 
 ## License
 

@@ -117,7 +117,9 @@ omezení frekvence a backoff při chybě/429. Nezavádíme nový SignalR hub na 
 Implementováno: P0/P1, místní dashboard s jedním přihlášením (P2) a jednotlivé akce
 s evidencí ID (základ P4). Ověření je syntetické; přijetí na skutečném HomeLabu ani
 LAN nasazení neproběhlo. P3 zahrnuje samostatnou logovací stránku s historií, filtry,
-stránkováním a ručním streamem; obecné detailní stránky, P5 a P6 zbývají.
+stránkováním a ručním streamem. P5 má připravený produkční proxy profil, Linux balíček,
+systemd/Nginx a návod pro hlcp.home.goffa.cz; skutečné přijetí LAN/VPN, obnova dat,
+obecné detailní stránky a P6 zbývají.
 Viz [místní provoz a přesné limity](local-setup.md).
 
 ### P0 — repozitář a sestavitelný základ
