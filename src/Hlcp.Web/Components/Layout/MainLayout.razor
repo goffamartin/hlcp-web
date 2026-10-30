@@ -10,8 +10,16 @@
         <nav aria-label="Hlavní navigace" class="mt-8">
             <a href="/" aria-current="page" class="block rounded-lg bg-slate-800 px-4 py-3 text-sm font-medium">Přehled</a>
         </nav>
+        <AuthorizeView>
+            <Authorized>
+                <form action="/account/logout" method="post" class="mt-5">
+                    <AntiforgeryToken />
+                    <button type="submit" class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Odhlásit správce</button>
+                </form>
+            </Authorized>
+        </AuthorizeView>
         <div class="mt-8 hidden border-t border-slate-800 pt-5 text-xs leading-6 text-slate-500 lg:block">
-            Samostatné rozhraní.<br />Kontroler a agenti zůstávají v Go.
+            Přístup správce.<br />Místní správa HomeLabu.
         </div>
     </aside>
     <main id="main" class="min-w-0 px-5 py-7 sm:px-9 lg:px-12 lg:py-10">
