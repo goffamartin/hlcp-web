@@ -1,4 +1,11 @@
 @page "/"
+@attribute [Authorize(Policy = "Admin")]
+@implements IAsyncDisposable
+@inject Hlcp.Web.Services.DashboardReader Reader
+@inject AuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@inject Hlcp.Web.Services.CircuitConnection Connection
 
 <PageTitle>Přehled | HLCP Web</PageTitle>
 
@@ -6,62 +13,176 @@
     <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Řídicí panel</p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Přehled HomeLabu</h1>
-        <p class="mt-3 max-w-xl text-sm leading-6 text-slate-500">Uzly, aplikace a jejich provozní stav na jednom místě.</p>
+        <p class="mt-3 text-sm leading-6 text-slate-500">Uzly, aplikace a jejich pozorovaný stav.</p>
     </div>
-    <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">Vývojový základ · bez připojení</span>
+    <span class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium">Správa HomeLabu</span>
 </header>
 
-<section aria-labelledby="connection-heading" class="mt-8 flex gap-4 rounded-2xl border border-sky-200 bg-sky-50 p-5 sm:p-6">
-    <span aria-hidden="true" class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-100 text-sm font-bold text-sky-800">i</span>
-    <div>
-        <h2 id="connection-heading" class="font-semibold text-sky-950">Kontroler zatím není připojený</h2>
-        <p class="mt-1 text-sm leading-6 text-sky-900">Tento první základ nečte produkční data a nespouští žádné akce. Připojení a přihlášení doplníme v dalších etapách.</p>
-    </div>
+@if (state.Failure is { } failure)
+{
+    <section role="status" class="mt-7 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+        <h2 class="font-semibold">@(state.Nodes is null ? "Data nejsou dostupná" : "Obnovení dat se nezdařilo · zobrazuji starší údaje")</h2>
+        <p class="mt-2 text-sm">@FailureText(failure)</p>
+        <p class="mt-2 text-xs">Další pokus za @state.RefreshDelay.TotalSeconds s. Kód: @failure</p>
+    </section>
+}
+else if (state.Nodes is null)
+{
+    <p role="status" class="mt-7 rounded-2xl border border-sky-200 bg-sky-50 p-5 text-sky-900">Načítám data kontroleru…</p>
+}
+
+@if (state.CapturedAt is { } captured)
+{
+    <p class="mt-5 text-xs text-slate-500">Poslední úspěšné čtení: @captured.ToLocalTime().ToString("dd. MM. yyyy HH:mm:ss zzz") · @(stale ? "zastaralý snímek" : "obnovování po 5 s")</p>
+}
+
+<section aria-label="Filtry" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+    <label for="node-filter" class="text-sm font-medium">Uzel</label>
+    <select id="node-filter" @bind="selectedNode" class="ml-3 max-w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <option value="">Všechny viditelné uzly</option>
+        @foreach (var node in state.Nodes ?? []) { <option value="@node.NodeId">@node.NodeId</option> }
+    </select>
+    <fieldset class="mt-4">
+        <legend class="text-sm font-medium">Tagy <span class="font-normal text-slate-500">· musí odpovídat všechny vybrané</span></legend>
+        <div class="mt-3 flex flex-wrap gap-3">
+            @foreach (var tag in AvailableTags)
+            {
+                <label class="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs">
+                    <input type="checkbox" checked="@selectedTags.Contains(tag)" disabled="@(selectedTags.Count >= 16 && !selectedTags.Contains(tag))" @onchange="() => ToggleTag(tag)" />@tag
+                </label>
+            }
+            @if (!AvailableTags.Any()) { <span class="text-xs text-slate-400">Žádné dostupné tagy</span> }
+        </div>
+    </fieldset>
+    @if (selectedTags.Count > 0 || selectedNode.Length > 0)
+    { <button type="button" @onclick="ClearFilters" class="mt-4 text-sm font-medium text-emerald-700 underline">Zrušit filtry</button> }
 </section>
 
-<section aria-label="Provozní souhrn" class="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    @foreach (var label in new[] { "Online uzly", "Běžící kontejnery", "Potřebuje pozornost", "Operace z webu" })
+<section aria-label="Provozní souhrn" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    @foreach (var metric in Metrics)
     {
         <article class="rounded-2xl border border-slate-200 bg-white p-5">
-            <h2 class="text-sm font-medium text-slate-500">@label</h2>
-            <p class="mt-5 text-4xl font-semibold text-slate-300" aria-label="Údaj není k dispozici">—</p>
-            <p class="mt-3 text-xs text-slate-400">Bez dostupných dat</p>
+            <h2 class="text-sm font-medium text-slate-500">@metric.Label</h2>
+            <p class="mt-4 text-4xl font-semibold">@(state.Nodes is null || stale ? "—" : metric.Value.ToString())</p>
+            <p class="mt-3 text-xs text-slate-500">@(stale ? "Aktuální údaj není dostupný" : metric.Hint)</p>
         </article>
     }
 </section>
 
-<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8" aria-labelledby="apps-heading">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="apps-heading" class="text-lg font-semibold">Aplikace a resources</h2>
-        <span class="text-xs text-slate-400">Seskupení podle tagů</span>
+<section class="mt-7" aria-labelledby="apps-heading">
+    <h2 id="apps-heading" class="text-lg font-semibold">Aplikace</h2>
+    <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        @foreach (var tag in ApplicationTags)
+        {
+            var rows = snapshot.Resources.Where(row => row.Resource.Tags?.Contains(tag, StringComparer.Ordinal) == true).ToArray();
+            if (rows.Length == 0) { continue; }
+            <article class="rounded-2xl border border-slate-200 bg-white p-5">
+                <h3 class="font-semibold">@tag</h3>
+                <p class="mt-3 text-sm text-slate-500">@rows.Length resources · @rows.Count(row => row.State == ResourceDisplayState.Running) běží · @rows.Count(row => row.State == ResourceDisplayState.Stale) zastaralých</p>
+            </article>
+        }
     </div>
-    <div class="py-12 text-center">
-        <span aria-hidden="true" class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 font-mono text-xl text-slate-400">{ }</span>
-        <h3 class="mt-4 font-medium">Zatím žádná načtená data</h3>
-        <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Po bezpečném připojení se zde objeví skutečný inventář. Nedostupné údaje nezaměňujeme za zdravý stav ani nulový počet.</p>
+    <p class="mt-3 text-xs text-slate-500">Seskupení podle vybraných aplikačních tagů. Jeden resource může patřit do více aplikací.</p>
+</section>
+
+<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="nodes-heading">
+    <h2 id="nodes-heading" class="text-lg font-semibold">Uzly</h2>
+    <div class="mt-4 flex flex-wrap gap-3">
+        @foreach (var node in VisibleNodes)
+        {
+            <article class="rounded-lg border border-slate-200 px-4 py-3 text-sm">
+                <h3 class="font-semibold">@node.NodeId</h3>
+                <p class="mt-1 text-slate-500">@(stale ? "Zastaralé údaje" : NodeLabel(node.State)) · @(node.AgentVersion ?? "verze neznámá")</p>
+            </article>
+        }
+        @if (!VisibleNodes.Any()) { <p class="text-sm text-slate-500">@(state.Nodes is null ? "Uzly zatím nelze zobrazit." : "Žádné uzly neodpovídají filtru.")</p> }
     </div>
 </section>
 
-<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="next-heading">
-    <button type="button" aria-expanded="@showNext.ToString().ToLowerInvariant()" aria-controls="next-content" @onclick="() => showNext = !showNext" class="flex w-full items-center justify-between gap-4 text-left">
-        <span id="next-heading" class="font-semibold">Co budeme stavět dál?</span>
-        <span aria-hidden="true" class="text-xl text-slate-400">@(showNext ? "−" : "+")</span>
-    </button>
-    @if (showNext)
+<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="resources-heading">
+    <h2 id="resources-heading" class="text-lg font-semibold">Resources <span class="text-sm font-normal text-slate-500">· @snapshot.Resources.Count</span></h2>
+    @if (snapshot.Resources.Count == 0)
+    { <p class="py-8 text-sm text-slate-500">@(state.Nodes is null ? "Bez dostupných dat kontroleru." : "Žádné resources neodpovídají filtru.")</p> }
+    else
     {
-        <div id="next-content" class="mt-4 grid gap-3 text-sm leading-6 text-slate-500 sm:grid-cols-3">
-            <p><strong class="text-slate-700">01 · Bezpečné čtení</strong><br />Přihlášení, skutečné stavy a tag filtry.</p>
-            <p><strong class="text-slate-700">02 · Detaily a logy</strong><br />Omezený buffer a pravdivý stav streamu.</p>
-            <p><strong class="text-slate-700">03 · Akce a MCP</strong><br />Oddělená oprávnění a stabilní command ID.</p>
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="border-b border-slate-200 text-xs text-slate-500"><tr><th scope="col" class="px-3 py-3">Resource</th><th scope="col" class="px-3 py-3">Uzel</th><th scope="col" class="px-3 py-3">Stav</th><th scope="col" class="px-3 py-3">Tagy</th><th scope="col" class="px-3 py-3">Ovládání</th></tr></thead>
+                <tbody>
+                    @foreach (var row in snapshot.Resources.Take(200))
+                    {
+                        <tr @key="(row.NodeId, row.Resource.Id)" class="border-b border-slate-100 last:border-0"><th scope="row" class="px-3 py-4 font-medium">@row.Resource.Id <span class="block text-xs font-normal text-slate-400">@row.Resource.Type</span></th><td class="px-3 py-4">@row.NodeId</td><td class="px-3 py-4"><span class="rounded-full px-2.5 py-1 text-xs @StateColor(row.State)">@StateLabel(row.State)</span></td><td class="px-3 py-4 text-xs text-slate-500">@string.Join(", ", row.Resource.Tags ?? [])</td><td class="px-3 py-4"><ResourceControls Node="@row.NodeId" Resource="@row.Resource" Disabled="@(stale || row.State == ResourceDisplayState.Stale)" /></td></tr>
+                    }
+                </tbody>
+            </table>
         </div>
+        @if (snapshot.Resources.Count > 200) { <p class="mt-3 text-xs text-slate-500">Zobrazeno prvních 200 resources. Zúž výběr pomocí filtrů.</p> }
     }
 </section>
-
-<footer class="mt-8 flex flex-wrap justify-between gap-2 text-xs text-slate-400">
-    <span>HLCP Web · raný vývoj</span>
-    <span>Běžící kontejner ≠ zdravá aplikace</span>
-</footer>
+<OperationHistory />
+<footer class="mt-8 text-xs text-slate-500">Běžící kontejner není potvrzení zdraví aplikace.</footer>
 
 @code {
-    private bool showNext;
+    private readonly DashboardState state = new();
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly HashSet<string> selectedTags = new(StringComparer.Ordinal);
+    private string selectedNode = "";
+    private Task? polling;
+    private bool stale => state.IsStale(DateTimeOffset.UtcNow);
+    private DashboardSnapshot snapshot => state.Project(DateTimeOffset.UtcNow, selectedNode.Length == 0 ? null : selectedNode, selectedTags);
+    private IEnumerable<string> AvailableTags => (state.Nodes ?? []).SelectMany(node => node.Inventory.Resources ?? []).SelectMany(resource => resource.Tags ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+    private IEnumerable<string> ApplicationTags => (Configuration.GetSection("Dashboard:ApplicationTags").Get<string[]>() ?? []).Where(ResourceTags.IsValid).Distinct(StringComparer.Ordinal).Take(16);
+    private IEnumerable<NodeSnapshot> VisibleNodes => (state.Nodes ?? []).Where(node => selectedNode.Length == 0 || node.NodeId == selectedNode).Where(node => selectedTags.Count == 0 || (node.Inventory.Resources ?? []).Any(resource => ResourceTags.Matches(resource.Tags, selectedTags)));
+    private (string Label, int Value, string Hint)[] Metrics => [
+        ("Online uzly", snapshot.Counts.OnlineNodes, "Z viditelných uzlů ve filtru"),
+        ("Běžící kontejnery", snapshot.Counts.RunningContainers, "Čerstvě pozorovaný stav running"),
+        ("Zastavené kontejnery", snapshot.Counts.StoppedContainers, "Zastavení nemusí být chyba"),
+        ("Neověřené / chybové", snapshot.Resources.Count(row => row.State is ResourceDisplayState.Error or ResourceDisplayState.Unknown or ResourceDisplayState.Stale), "Chyba, neznámý nebo zastaralý stav")];
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) polling = PollAsync(); // No controller requests during prerender.
+        return Task.CompletedTask;
+    }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (!lifetime.IsCancellationRequested)
+            {
+                await Connection.WaitAsync(lifetime.Token);
+                var principal = (await Authentication.GetAuthenticationStateAsync()).User;
+                var result = await Reader.ReadAsync(principal, lifetime.Token);
+                if (result.Nodes is not null && result.CapturedAt is { } captured) state.Accept(result.Nodes, captured);
+                else state.Refuse(result.Failure ?? HlcpFailure.Unavailable);
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(state.RefreshDelay, lifetime.Token);
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { await InvokeAsync(() => Navigation.NavigateTo("/account/login", forceLoad: true)); }
+    }
+
+    private void ToggleTag(string tag) { if (!selectedTags.Remove(tag)) selectedTags.Add(tag); }
+    private void ClearFilters() { selectedTags.Clear(); selectedNode = ""; }
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        if (polling is not null) await polling;
+        lifetime.Dispose();
+    }
+
+    private static string NodeLabel(string state) => state switch { "online" => "Online", "offline" => "Offline", "degraded" => "Omezené spojení", _ => "Neznámý stav" };
+    private static string StateLabel(ResourceDisplayState state) => state switch { ResourceDisplayState.Running => "Běží", ResourceDisplayState.Stopped => "Zastaveno", ResourceDisplayState.Error => "Chyba", ResourceDisplayState.Stale => "Zastaralé", _ => "Neznámý" };
+    private static string StateColor(ResourceDisplayState state) => state switch { ResourceDisplayState.Running => "bg-emerald-50 text-emerald-800", ResourceDisplayState.Error => "bg-red-50 text-red-800", ResourceDisplayState.Stale => "bg-amber-50 text-amber-900", _ => "bg-slate-100 text-slate-600" };
+    private static string FailureText(HlcpFailure failure) => failure switch
+    {
+        HlcpFailure.CredentialUnavailable => "Chybí čitelný token kontroleru. Nastav na serveru Hlcp:TokenFile na samostatný observer credential.",
+        HlcpFailure.AccessDenied => "Kontroler přístup odmítl. Ověř oprávnění webového credentialu.",
+        HlcpFailure.Timeout => "Kontroler neodpověděl v časovém limitu.",
+        HlcpFailure.RateLimited => "Kontroler omezuje počet požadavků. Čtení zpomalujeme.",
+        HlcpFailure.InvalidResponse or HlcpFailure.ResponseTooLarge => "Odpověď kontroleru nesplňuje očekávaný formát nebo limit velikosti.",
+        _ => "Kontroler není dostupný. Poslední snímek není potvrzením aktuálního stavu."
+    };
 }

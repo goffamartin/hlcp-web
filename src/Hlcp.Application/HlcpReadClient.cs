@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Hlcp.Application;
@@ -12,7 +13,7 @@ public interface IHlcpTokenSource
 public enum HlcpFailure
 {
     Unavailable, Timeout, AccessDenied, NotFound, RateLimited,
-    InvalidResponse, ResponseTooLarge, UnsupportedTagFiltering, CredentialUnavailable
+    InvalidResponse, ResponseTooLarge, UnsupportedTagFiltering, CredentialUnavailable, CommandRefused
 }
 
 // Fixed codes/messages deliberately omit response bodies, tokens and secret paths.
@@ -89,7 +90,46 @@ public sealed class HlcpReadClient
         return result;
     }
 
-    private async Task<T> GetAsync<T>(string path, bool requireTags, CancellationToken cancellationToken)
+    public async Task<CommandPreview> PreviewAsync(string node, ResourceCommand command, CancellationToken cancellationToken = default)
+    {
+        ValidateCommand(command);
+        var result = await SendAsync<CommandPreview>(ResourcePath(node, "resolve", []), false, cancellationToken, command);
+        if (result.Node != node || result.Resource != command.ResourceId || result.Action != command.Action || result.Command != command)
+            throw new HlcpReadException(HlcpFailure.InvalidResponse);
+        return result;
+    }
+
+    public async Task<CommandResult> SubmitAsync(string node, ResourceCommand command, CancellationToken cancellationToken = default)
+    {
+        ValidateCommand(command);
+        var result = await SendAsync<CommandResult>(ResourcePath(node, "commands", []), false, cancellationToken, command);
+        ValidateResult(command.CommandId, result);
+        return result;
+    }
+
+    public async Task<CommandProgress> LookupAsync(string node, ResourceCommand command, CancellationToken cancellationToken = default)
+    {
+        ValidateCommand(command);
+        var result = await GetAsync<CommandProgress>(ResourcePath(node, "commands/" + Uri.EscapeDataString(command.CommandId), []), false, cancellationToken);
+        if (result.Command != command || string.IsNullOrEmpty(result.State)) throw new HlcpReadException(HlcpFailure.InvalidResponse);
+        if (result.Result is not null) ValidateResult(command.CommandId, result.Result);
+        return result;
+    }
+
+    private static void ValidateCommand(ResourceCommand command)
+    {
+        if (!ValidIdentifier(command.CommandId) || !ValidIdentifier(command.ResourceId) || !ValidIdentifier(command.Action)) throw new ArgumentException("Invalid command.");
+    }
+
+    private static void ValidateResult(string id, CommandResult result)
+    {
+        if (result.CommandId != id || !ValidIdentifier(result.Code) || result.Success != (result.Code == "OK"))
+            throw new HlcpReadException(HlcpFailure.InvalidResponse);
+    }
+
+    private Task<T> GetAsync<T>(string path, bool requireTags, CancellationToken cancellationToken) => SendAsync<T>(path, requireTags, cancellationToken);
+
+    private async Task<T> SendAsync<T>(string path, bool requireTags, CancellationToken cancellationToken, ResourceCommand? command = null)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
@@ -101,7 +141,8 @@ public sealed class HlcpReadClient
             { throw new HlcpReadException(HlcpFailure.CredentialUnavailable); }
             if (token is null || token.Length is < 32 or > 4096 || token.Any(c => c <= 0x20 || c >= 0x7f))
                 throw new HlcpReadException(HlcpFailure.CredentialUnavailable);
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, path));
+            using var request = new HttpRequestMessage(command is null ? HttpMethod.Get : HttpMethod.Post, new Uri(endpoint, path));
+            if (command is not null) request.Content = JsonContent.Create(command, options: Json);
             try { request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); }
             catch (FormatException) { throw new HlcpReadException(HlcpFailure.CredentialUnavailable); }
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
@@ -111,6 +152,7 @@ public sealed class HlcpReadClient
                     HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => HlcpFailure.AccessDenied,
                     HttpStatusCode.NotFound => HlcpFailure.NotFound,
                     HttpStatusCode.TooManyRequests => HlcpFailure.RateLimited,
+                    HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity => HlcpFailure.CommandRefused,
                     _ => HlcpFailure.Unavailable
                 });
             if (requireTags && (!response.Headers.TryGetValues("X-HLCP-Resource-Tags", out var values) || !values.SequenceEqual(["1"])))

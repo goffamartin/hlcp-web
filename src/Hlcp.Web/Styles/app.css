@@ -1,5 +1,6 @@
 @import "tailwindcss" source(none);
 @source "../Components";
+@source "../Pages";
 
 @theme {
   --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -11,3 +12,4 @@
 }
 
 #blazor-error-ui { display: none; }
+dialog::backdrop { background: rgb(2 6 23 / 50%); }

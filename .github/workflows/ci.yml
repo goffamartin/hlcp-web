@@ -46,3 +46,6 @@ jobs:
           test ! -d artifacts/publish/node_modules
           test ! -d artifacts/publish/.tools
           test ! -e artifacts/publish/appsettings.Local.json
+          test ! -d artifacts/publish/.local
+          test ! -d artifacts/publish/credentials
+          test ! -d artifacts/publish/secrets

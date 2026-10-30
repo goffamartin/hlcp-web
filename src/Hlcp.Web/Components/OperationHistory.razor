@@ -1,0 +1,66 @@
+@inject Hlcp.Web.Services.ResourceActions Actions
+@inject AuthenticationStateProvider Authentication
+@inject Hlcp.Web.Services.CircuitConnection Connection
+@implements IAsyncDisposable
+
+<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="history-heading">
+    <h2 id="history-heading" class="text-lg font-semibold">Operace z webu</h2>
+    <p class="mt-2 text-xs text-slate-500">Posledních 50 příprav a operací tohoto webu. Nezahrnuje akce spuštěné přes CLI. Nejistý výsledek není potvrzené selhání.</p>
+    @if (message is not null) { <p role="status" class="mt-4 text-sm text-amber-900">@message</p> }
+    @if (operations.Length == 0) { <p class="py-6 text-sm text-slate-500">Zatím žádné evidované operace.</p> }
+    <ul class="mt-4 divide-y divide-slate-100">
+        @foreach (var item in operations)
+        {
+            <li class="flex flex-wrap items-start justify-between gap-3 py-4 text-sm">
+                <div>
+                    <p class="font-medium">@item.Operation.Node / @item.Operation.Resource · @item.Operation.Action</p>
+                    <p class="mt-1 text-xs text-slate-500">@(item.Result is { } result ? result.Success ? "Dokončeno · " + result.Code : "Chyba · " + result.Code : item.Submitted ? "Výsledek neznámý / čeká na dohledání" : "Připraveno · nebylo odesláno")</p>
+                    <p class="mt-1 break-all font-mono text-xs text-slate-400">@item.Operation.Id</p>
+                </div>
+                @if (item.Submitted && item.Result is null)
+                { <button type="button" disabled="@Busy" @onclick="() => LookupAsync(item.Operation.Id)" class="rounded-lg border border-slate-300 px-3 py-2 text-xs disabled:opacity-40">Dohledat výsledek</button> }
+            </li>
+        }
+    </ul>
+</section>
+
+@code {
+    private readonly CancellationTokenSource lifetime = new();
+    private Hlcp.Web.Services.OperationStatus[] operations = [];
+    private Task? polling;
+    private bool Busy;
+    private string? message;
+    protected override Task OnAfterRenderAsync(bool firstRender) { if (firstRender) polling = PollAsync(); return Task.CompletedTask; }
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (!lifetime.IsCancellationRequested)
+            {
+                await Connection.WaitAsync(lifetime.Token);
+                operations = await Actions.ListAsync((await Authentication.GetAuthenticationStateAsync()).User, lifetime.Token);
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(TimeSpan.FromSeconds(10), lifetime.Token);
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        { message = "Historii nelze načíst. Ověř přihlášení a místní úložiště webu."; await InvokeAsync(StateHasChanged); }
+    }
+    private async Task LookupAsync(string id)
+    {
+        if (Busy) return;
+        Busy = true;
+        try
+        {
+            var user = (await Authentication.GetAuthenticationStateAsync()).User;
+            var result = await Actions.LookupAsync(user, id, lifetime.Token);
+            message = result is null ? "Kontroler zatím nevrátil konečný výsledek." : "Výsledek byl dohledán.";
+            operations = await Actions.ListAsync(user, lifetime.Token);
+        }
+        catch (HlcpReadException) { message = "Výsledek nelze dohledat. Ani nenalezené ID nepotvrzuje, že se akce neprovedla. Nic znovu neodesílám."; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { message = "Dohledání se nezdařilo. Ověř přístup a místní úložiště."; }
+        finally { Busy = false; }
+    }
+    public async ValueTask DisposeAsync() { await lifetime.CancelAsync(); if (polling is not null) await polling; lifetime.Dispose(); }
+}
