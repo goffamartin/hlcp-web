@@ -6,15 +6,18 @@ A future MCP endpoint will share the application services, not the UI components
 
 ## Status
 
-Bootstrap implemented. This is not a deployed or production-ready management UI.
+Local management milestone implemented. This is not deployed or production-ready.
 HLCP controller/agents remain in Go/CBOR; this repository is a separate client.
-The initial slice is read-only. Authentication, actions, live logs and MCP are
-separate planned stages, not implied by the project scaffolding.
+The UI supports one admin login, a refreshing dashboard, node/tag filters, individual
+allowlisted resource actions with preview/confirmation, and web-originated operation
+history/result lookup. No Identity account system, roles or database is required.
+Live logs and MCP remain planned. Non-Development startup is still refused until
+HTTPS and deployment hardening are completed.
 
-The local preview is an explicitly unconnected dashboard shell, not fake production
-data. The read-only library and its projection are tested separately; the UI does
-not load a controller token or make production requests yet. Non-Development startup
-is intentionally refused until authentication is implemented.
+Controller access requires explicitly configured server-side token files. Without
+them the dashboard displays a connection/configuration error, never demo data.
+Automated tests and browser QA use synthetic APIs only; real HomeLab acceptance
+and production deployment have not been performed.
 
 See the [implementation plan (Czech)](docs/implementation-plan.md) for architecture,
 milestones, acceptance checks and explicit deployment decisions.
@@ -33,11 +36,15 @@ npm ci
 dotnet restore Hlcp.Web.slnx --locked-mode
 dotnet build Hlcp.Web.slnx -c Release --no-restore
 dotnet test Hlcp.Web.slnx -c Release --no-build --no-restore
+dotnet run --project src/Hlcp.Web -c Release --no-build --launch-profile http -- --set-admin-password
 dotnet run --project src/Hlcp.Web -c Release --no-build --launch-profile http
 ```
 
 Open `http://127.0.0.1:5088`. The host is forced to loopback during this bootstrap
-stage. Stop it with Ctrl+C. If a project-local SDK is used, put its directory on
+stage. Set the admin password at the hidden interactive prompt; never pass it in
+arguments or environment variables. The hash, keys and operation metadata default
+to `src/Hlcp.Web/.local/` and are excluded from Git and publish. Stop the host with
+Ctrl+C. If a project-local SDK is used, put its directory on
 PATH and set DOTNET_ROOT appropriately; `.tools/` is ignored and not distributed.
 
 Tailwind CSS 4.3.3 is compiled from Razor sources before web builds. To watch styles
@@ -50,9 +57,10 @@ npm audit --audit-level=high
 dotnet list Hlcp.Web.slnx package --vulnerable --include-transitive
 ```
 
-Publish is a packaging check, not authorization to deploy this unauthenticated
-bootstrap on LAN. The initial [API client boundary](docs/api-client.md) and
-dashboard-state tests use only synthetic data. CI never needs HomeLab credentials.
+Publish is a packaging check, not a LAN deployment. See [local setup and access](docs/local-setup.md)
+for credentials, action semantics and the remaining production requirements.
+The [API client boundary](docs/api-client.md) and tests use only synthetic data.
+CI never needs HomeLab credentials.
 The project-relative publish property also avoids MSBuild command-line parsing
 issues with spaces/commas in a Windows checkout path.
 

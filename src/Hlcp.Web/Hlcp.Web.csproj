@@ -11,6 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove=".local/**;credentials/**;secrets/**;appsettings.Local.json" />
+    <None Remove=".local/**;credentials/**;secrets/**;appsettings.Local.json" />
     <Content Remove="wwwroot/app.css" />
     <Content Include="wwwroot/app.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
