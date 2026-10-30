@@ -4,62 +4,72 @@
 @using Microsoft.JSInterop
 @implements IDisposable
 
-@if (Actions.Enabled)
-{
-    <div class="flex flex-wrap items-center gap-2">
-        <select aria-label="Akce pro @Resource.Id" @bind="selected" disabled="@(Busy || Disabled)" class="max-w-36 rounded border border-slate-300 px-2 py-1 text-xs">
-            <option value="">Vyber akci</option>
-            @foreach (var action in Resource.Actions.Where(action => action != "logs" || Resource.Type != "container")) { <option value="@action">@action</option> }
+<div class="flex flex-wrap items-center gap-2">
+    @if (Resource.Actions.Contains("status", StringComparer.Ordinal))
+    { <button @ref="statusOpener" type="button" disabled="@(Busy || Disabled || !Actions.Enabled)" @onclick="StatusAsync" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">@(Busy && activeAction == "status" ? "Status…" : "Status")</button> }
+    @if (Actions.Enabled && OtherActions.Any())
+    {
+        <select aria-label="Akce pro @Resource.Id" @bind="selected" disabled="@(Busy || Disabled)" class="max-w-36 rounded border border-slate-300 px-2 py-2 text-xs">
+            <option value="">Další akce</option>
+            @foreach (var action in OtherActions) { <option value="@action">@action</option> }
         </select>
-        <button @ref="opener" type="button" disabled="@(Busy || Disabled || selected.Length == 0)" @onclick="PrepareAsync" class="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">Provést…</button>
-    </div>
-}
-else { <span class="text-xs text-slate-400">Ovládání není nastavené</span> }
-@if (message is not null) { <p role="status" class="mt-2 max-w-xs text-xs leading-5 text-slate-600">@message</p> }
+        <button @ref="opener" type="button" disabled="@(Busy || Disabled || selected.Length == 0)" @onclick="PrepareSelectedAsync" class="rounded bg-slate-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">Provést…</button>
+    }
+    @if (!Actions.Enabled) { <span class="text-xs text-slate-400">Ovládání není nastavené</span> }
+</div>
+@if (message is not null) { <p role="status" class="mt-2 text-xs leading-5 text-slate-600">@message</p> }
+@if (latest is not null) { <ActionResultView Result="@latest" /> }
 @if (pending is { } operation)
 {
-        <dialog @ref="dialog" @oncancel="CancelAsync" aria-labelledby="confirm-title" aria-describedby="confirm-description" class="m-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-            <h2 id="confirm-title" class="text-xl font-semibold">Potvrdit akci @operation.Action?</h2>
-            <p id="confirm-description" class="mt-4 text-sm leading-6">Uzel <strong>@operation.Node</strong>, resource <strong>@operation.Resource</strong>. Akce se týká pouze tohoto resource a může ovlivnit jeho provoz.</p>
-            <p class="mt-3 break-all font-mono text-xs text-slate-500">ID: @operation.Id</p>
-            <div class="mt-6 flex justify-end gap-3">
-                <button @ref="cancelButton" type="button" @onclick="CancelAsync" class="rounded-lg border border-slate-300 px-4 py-2 text-sm">Zrušit</button>
-                <button type="button" disabled="@Busy" @onclick="ConfirmAsync" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Potvrdit @operation.Action</button>
-            </div>
-        </dialog>
+    <dialog @ref="dialog" @oncancel="CancelAsync" aria-labelledby="@dialogTitle" class="m-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <h2 id="@dialogTitle" class="text-xl font-semibold">Potvrdit akci @operation.Action?</h2>
+        <p class="mt-4 text-sm leading-6">Uzel <strong>@operation.Node</strong>, resource <strong>@operation.Resource</strong>. Akce může ovlivnit jeho provoz.</p>
+        <p class="mt-3 break-all font-mono text-xs text-slate-500">ID: @operation.Id</p>
+        <div class="mt-6 flex justify-end gap-3">
+            <button @ref="cancelButton" type="button" @onclick="CancelAsync" class="rounded-lg border border-slate-300 px-4 py-2 text-sm">Zrušit</button>
+            <button type="button" disabled="@Busy" @onclick="ConfirmAsync" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Potvrdit @operation.Action</button>
+        </div>
+    </dialog>
 }
 
 @code {
     [Parameter, EditorRequired] public string Node { get; set; } = "";
     [Parameter, EditorRequired] public ResourceDescriptor Resource { get; set; } = default!;
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<CommandResult> Completed { get; set; }
     private readonly CancellationTokenSource lifetime = new();
-    private bool Busy;
-    private string selected = "";
+    private readonly string dialogTitle = "confirm-" + Guid.NewGuid().ToString("N");
+    private bool Busy, focusDialog;
+    private string selected = "", activeAction = "";
     private string? message;
+    private CommandResult? latest;
     private Hlcp.Web.Services.WebOperation? pending;
-    private ElementReference opener, cancelButton, dialog;
-    private bool focusDialog;
+    private ElementReference opener, statusOpener, cancelButton, dialog;
+    private IEnumerable<string> OtherActions => Resource.Actions.Where(action => action != "status" && (action != "logs" || Resource.Type != "container"));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (focusDialog)
+        if (!focusDialog) return;
+        focusDialog = false;
+        try
         {
-            focusDialog = false;
             var module = await JavaScript.InvokeAsync<IJSObjectReference>("import", "/dialog.js");
             try { await module.InvokeVoidAsync("show", dialog); await cancelButton.FocusAsync(); }
             finally { await module.DisposeAsync(); }
         }
+        catch (JSDisconnectedException) { }
     }
-    private async Task PrepareAsync()
+    private Task StatusAsync() => PrepareAsync("status");
+    private Task PrepareSelectedAsync() => PrepareAsync(selected);
+    private async Task PrepareAsync(string action)
     {
-        if (Busy || Disabled || selected.Length == 0) return;
-        Busy = true;
-        message = null;
+        if (Busy || Disabled || !Actions.Enabled || action.Length == 0) return;
+        Busy = true; activeAction = action; message = null; latest = null;
         try
         {
-            pending = await Actions.PrepareAsync((await Authentication.GetAuthenticationStateAsync()).User, Node, Resource.Id, selected, lifetime.Token);
-            focusDialog = true;
+            var plan = await Actions.PrepareWithPreviewAsync((await Authentication.GetAuthenticationStateAsync()).User, Node, Resource.Id, action, lifetime.Token);
+            if (action == "status" && plan.ReadOnly) await ExecuteAsync(plan.Operation, requireReadOnly: true);
+            else { pending = plan.Operation; focusDialog = true; }
         }
         catch (HlcpReadException error) { message = $"Příprava nebyla potvrzena kontrolerem ({error.Failure}). Nic nebylo odesláno k provedení."; }
         catch (IOException) { message = "Operaci nelze bezpečně uložit. Nic nebylo odesláno k provedení."; }
@@ -71,19 +81,28 @@ else { <span class="text-xs text-slate-400">Ovládání není nastavené</span> 
     {
         if (Busy || pending is null) return;
         Busy = true;
-        var operation = pending;
-        pending = null;
+        var operation = pending; pending = null;
+        try { await ExecuteAsync(operation); }
+        finally { Busy = false; }
+    }
+    private async Task ExecuteAsync(Hlcp.Web.Services.WebOperation operation, bool requireReadOnly = false)
+    {
         try
         {
-            var result = await Actions.ConfirmAsync((await Authentication.GetAuthenticationStateAsync()).User, operation.Id, lifetime.Token);
-            message = result is null ? $"Výsledek zatím není známý. Dohledání: {operation.Id}." : result.Success ? $"Akce dokončena ({result.Code}). ID: {operation.Id}." : $"Akce skončila chybou ({result.Code}). ID: {operation.Id}.";
+            latest = await Actions.ConfirmAsync((await Authentication.GetAuthenticationStateAsync()).User, operation.Id, lifetime.Token, requireReadOnly);
+            message = latest is null ? $"Výsledek zatím není známý. Dohledání: {operation.Id}." : null;
+            if (latest is not null && Completed.HasDelegate) await Completed.InvokeAsync(latest);
         }
         catch (Exception error) when (error is HlcpReadException or IOException or System.Text.Json.JsonException)
         { message = $"Provedení ani výsledek nelze potvrdit. Neopakuj akci; použij dohledání ID {operation.Id} v operacích z webu."; }
         catch (UnauthorizedAccessException) { message = "Přístup byl odmítnut. Ověř přihlášení a místní úložiště; poté zkontroluj operace z webu."; }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        finally { Busy = false; }
     }
-    private async Task CancelAsync() { if (Busy) return; pending = null; await opener.FocusAsync(); }
+    private async Task CancelAsync()
+    {
+        if (Busy) return;
+        pending = null;
+        if (activeAction == "status") await statusOpener.FocusAsync(); else await opener.FocusAsync();
+    }
     public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
 }

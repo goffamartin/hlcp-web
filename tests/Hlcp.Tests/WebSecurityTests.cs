@@ -27,6 +27,8 @@ public sealed class WebSecurityTests
         var page = await client.GetAsync("/");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync("/nodes/synthetic-node/resources/synthetic-container/logs")).StatusCode);
+        foreach (var path in new[] { "/nodes", "/nodes/synthetic-node", "/nodes/synthetic-node/resources/synthetic-container" })
+            Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync(path)).StatusCode);
         Assert.Contains("/account/login", page.Headers.Location!.ToString());
         Assert.Equal(0, factory.Controller.Calls);
         var reader = factory.Services.GetRequiredService<IServiceScopeFactory>().CreateScope();
@@ -186,6 +188,10 @@ internal sealed class SyntheticController : HttpMessageHandler
     public bool ForbidReads;
     public bool DenyAction;
     public bool TaskLogs;
+    public bool StatusIsMutating;
+    public bool ForceMutatingPreview;
+    public string ResultMessage = "running";
+    public bool ResultSuccess = true;
     public int LogReads;
     public Func<HttpResponseMessage>? LogResponse;
     private ResourceCommand? last;
@@ -207,28 +213,33 @@ internal sealed class SyntheticController : HttpMessageHandler
         if (request.Method == HttpMethod.Get && path == "/v1/nodes")
         {
             if (ForbidReads) return new(HttpStatusCode.Forbidden) { Content = new StringContent("private upstream diagnostic " + TestWeb.Token) };
-            return Reply(new[] { new NodeSnapshot { NodeId = "synthetic-node", State = "online", Inventory = new() { Revision = 1, Resources = [Resource()] }, Resources = new() { InventoryRevision = 1, Resources = [new() { ResourceId = "synthetic-container", State = "running", ObservedAt = DateTimeOffset.UtcNow }] } } });
+            return Reply(new[] { Node() });
         }
+        if (request.Method == HttpMethod.Get && path == "/v1/nodes/synthetic-node")
+            return ForbidReads ? new(HttpStatusCode.Forbidden) : Reply(Node());
+        if (request.Method == HttpMethod.Get && path == "/v1/nodes/missing") return new(HttpStatusCode.NotFound);
         if (path.EndsWith("/resources")) return Reply(DenyAction ? Array.Empty<ResourceDescriptor>() : new[] { Resource() });
         if (path.EndsWith("/resolve"))
         {
             var command = (await request.Content!.ReadFromJsonAsync<ResourceCommand>(Json, cancellationToken))!;
-            return Reply(new CommandPreview { Node = "synthetic-node", Resource = command.ResourceId, Action = command.Action, Command = command });
+            return Reply(new CommandPreview { Node = "synthetic-node", Resource = command.ResourceId, Action = command.Action, Command = command, ReadOnly = command.Action == "status" && !StatusIsMutating && !ForceMutatingPreview });
         }
         if (path.EndsWith("/commands") && request.Method == HttpMethod.Post)
         {
             last = await request.Content!.ReadFromJsonAsync<ResourceCommand>(Json, cancellationToken);
             Interlocked.Increment(ref Submissions);
             if (FailSubmission) throw new HttpRequestException("Synthetic connection lost after admission");
-            return Reply(new CommandResult { CommandId = last!.CommandId, Success = true, Code = "OK" });
+            return Reply(Result(last!));
         }
         if (path.Contains("/commands/"))
         {
             if (last is null) return new(HttpStatusCode.NotFound);
-            return Reply(new CommandProgress { Command = last, State = "completed", Result = new() { CommandId = last.CommandId, Success = true, Code = "OK" } });
+            return Reply(new CommandProgress { Command = last, State = "completed", Result = Result(last) });
         }
         throw new InvalidOperationException("Unexpected synthetic API path.");
     }
-    private ResourceDescriptor Resource() => new() { Id = "synthetic-container", Type = TaskLogs ? "task" : "container", Actions = TaskLogs ? ["logs"] : ["status", "restart", "logs"], Tags = ["synthetic", "production"] };
+    private CommandResult Result(ResourceCommand command) => new() { CommandId = command.CommandId, Success = ResultSuccess, Code = ResultSuccess ? "OK" : "RUNTIME_FAILED", Message = ResultMessage };
+    private NodeSnapshot Node() => new() { NodeId = "synthetic-node", State = "online", AgentVersion = "synthetic-version", Capabilities = ["resource.control", "podman"], Inventory = new() { Revision = 1, Resources = [Resource()] }, Resources = new() { InventoryRevision = 1, Resources = [new() { ResourceId = "synthetic-container", State = "running", ObservedAt = DateTimeOffset.UtcNow }] } };
+    private ResourceDescriptor Resource() => new() { Id = "synthetic-container", Type = TaskLogs || StatusIsMutating ? "task" : "container", Actions = TaskLogs ? ["logs"] : ["status", "restart", "logs"], Tags = ["synthetic", "production"] };
     private static HttpResponseMessage Reply<T>(T value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value, options: Json) };
 }

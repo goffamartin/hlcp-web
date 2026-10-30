@@ -2,7 +2,8 @@
 
 Vývoj používá Development a `http://127.0.0.1:5088`. Backend zůstává na loopbacku
 i v Production; pro LAN je připravený explicitní HTTPS proxy profil a
-[samostatný postup nasazení](lan-deployment.md). Skutečné nasazení zatím neproběhlo.
+[samostatný postup nasazení](lan-deployment.md). Vlastník potvrdil HTTPS přístup
+a čtení logů na cílové VM; úplné provozní přijetí popisuje [ověření](validation.md).
 
 ## Jedno přihlášení
 
@@ -52,8 +53,8 @@ scope; tato aplikace policy ani tokeny nevytváří a neupravuje. Endpoint přij
 loopback HTTP origin, bez redirects/proxy. Pro skutečný kontroler poběží web na stejné
 VM; loopback neznamená jiný stroj ani hostitele z kontejneru.
 
-Observer slouží pro dashboard a ověření viditelného allowlistu. Operator se používá
-pro preview, spuštění a lookup vlastních operací. Bez OperatorTokenFile jsou ovládací
+Observer slouží pro dashboard, detail uzlu, ověření viditelného allowlistu a lookup
+známých výsledků. Operator se používá pro preview a spuštění. Bez OperatorTokenFile jsou ovládací
 prvky nedostupné. Akce musí projít allowlistem observeru i oprávněním operatoru v HLCP.
 Nativní kontejnerová akce `logs` se nikdy neposílá jako COMMAND; má vlastní logovací UI.
 Obyčejná script/service akce pojmenovaná `logs` si zachovává běžné command chování.
@@ -62,6 +63,17 @@ Jediné webové přihlášení má přístup ke všem takto nakonfigurovaným re
 Vyber resource a akci. Náhled přes `/resolve` nic neprovádí; následné potvrzení ukáže
 přesný uzel, resource, akci a ID. Před POST se znovu ověří allowlist a preview. Potvrzení
 platí 5 minut. Není hromadná akce podle tagu ani libovolný shell.
+
+Navigace **Uzly → uzel → resource** nabízí metadata, související resources, logy
+a filtrovanou historii operací. Tlačítko **Status** na uzlu obnoví metadata pomocí GET.
+Na resource spustí povolenou akci `status`: read-only náhled umožní přímé provedení,
+jinak se zobrazí potvrzení (např. vlastní script). Pozorovaný stav z agenta a výsledek
+vyžádané akce jsou zobrazeny samostatně.
+
+Dokončená akce ukáže success/code, command ID a text `message`, včetně chybového
+výstupu. JSON objekt/pole se pro čitelnost odsadí; HTML zůstává obyčejným textem.
+Aktuální protokol poskytuje nejvýše 4096 UTF-8 bajtů, nikoli neomezený výstup skriptu.
+Prázdný výstup se odlišuje od dosud nenačteného výsledku.
 
 ## Operace a nejisté výsledky
 
@@ -77,6 +89,12 @@ success/code. Neuchovávají text výsledku, logy ani tokeny. Limit 10 000 pří
 další příjem místo mazání nevyřešených ID. Automatické promazávání zatím není. Úložiště
 je určeno jednomu procesu; HA, obnova po výpadku napájení a backup/restore ještě nejsou
 ověřené. Stav „připraveno“ může zahrnovat zrušený nebo odmítnutý preview; neznamená odeslání.
+
+Na detailu se posledních 50 operací vybírá až po filtrování na daný uzel/resource.
+**Zobrazit výstup** načte známý výsledek z kontroleru do paměti stránky; funguje i pro
+starší metadata bez textu. Pokud kontroler výsledek již neuchovává, web jej neumí
+obnovit ze svého journalu. Zavření výstupu, opuštění stránky nebo restart webu tento
+text nearchivuje. Nevyvolávej novou akci jen kvůli načtení starého výsledku.
 
 Dashboard obnovuje data po 5 s, bez překrývání, s backoff do 60 s při chybě. Odpojený
 circuit další čtení pozastaví. Starší snímek zůstane viditelný jako zastaralý; aktuální

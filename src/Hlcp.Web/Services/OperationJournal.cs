@@ -50,11 +50,12 @@ public sealed class OperationJournal(string directory)
 
     public async Task SaveResultAsync(string id, CommandResult result)
     {
-        try { await WriteNewAsync(PathFor(id, ".result.json"), result, CancellationToken.None); }
+        // Adapter output is returned to the current UI only, never persisted in the journal.
+        try { await WriteNewAsync(PathFor(id, ".result.json"), result with { Message = null }, CancellationToken.None); }
         catch (IOException) when (File.Exists(PathFor(id, ".result.json"))) { }
     }
 
-    public async Task<OperationStatus[]> ListAsync(CancellationToken cancellationToken)
+    public async Task<OperationStatus[]> ListAsync(CancellationToken cancellationToken, string? node = null, string? resource = null)
     {
         if (!Directory.Exists(directory)) return [];
         var operations = new List<WebOperation>();
@@ -64,7 +65,7 @@ public sealed class OperationJournal(string directory)
             operations.Add(await ReadAsync(id, cancellationToken));
         }
         var result = new List<OperationStatus>();
-        foreach (var item in operations.OrderByDescending(item => item.CreatedAt).Take(50))
+        foreach (var item in operations.Where(item => node is null || item.Node == node).Where(item => resource is null || item.Resource == resource).OrderByDescending(item => item.CreatedAt).Take(50))
         {
             CommandResult? terminal = null;
             var file = PathFor(item.Id, ".result.json");
