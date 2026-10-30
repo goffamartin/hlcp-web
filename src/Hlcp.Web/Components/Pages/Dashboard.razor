@@ -1,0 +1,67 @@
+@page "/"
+
+<PageTitle>Přehled | HLCP Web</PageTitle>
+
+<header class="flex flex-wrap items-start justify-between gap-5">
+    <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Řídicí panel</p>
+        <h1 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Přehled HomeLabu</h1>
+        <p class="mt-3 max-w-xl text-sm leading-6 text-slate-500">Uzly, aplikace a jejich provozní stav na jednom místě.</p>
+    </div>
+    <span class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900">Vývojový základ · bez připojení</span>
+</header>
+
+<section aria-labelledby="connection-heading" class="mt-8 flex gap-4 rounded-2xl border border-sky-200 bg-sky-50 p-5 sm:p-6">
+    <span aria-hidden="true" class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-100 text-sm font-bold text-sky-800">i</span>
+    <div>
+        <h2 id="connection-heading" class="font-semibold text-sky-950">Kontroler zatím není připojený</h2>
+        <p class="mt-1 text-sm leading-6 text-sky-900">Tento první základ nečte produkční data a nespouští žádné akce. Připojení a přihlášení doplníme v dalších etapách.</p>
+    </div>
+</section>
+
+<section aria-label="Provozní souhrn" class="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    @foreach (var label in new[] { "Online uzly", "Běžící kontejnery", "Potřebuje pozornost", "Operace z webu" })
+    {
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 class="text-sm font-medium text-slate-500">@label</h2>
+            <p class="mt-5 text-4xl font-semibold text-slate-300" aria-label="Údaj není k dispozici">—</p>
+            <p class="mt-3 text-xs text-slate-400">Bez dostupných dat</p>
+        </article>
+    }
+</section>
+
+<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8" aria-labelledby="apps-heading">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="apps-heading" class="text-lg font-semibold">Aplikace a resources</h2>
+        <span class="text-xs text-slate-400">Seskupení podle tagů</span>
+    </div>
+    <div class="py-12 text-center">
+        <span aria-hidden="true" class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 font-mono text-xl text-slate-400">{ }</span>
+        <h3 class="mt-4 font-medium">Zatím žádná načtená data</h3>
+        <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Po bezpečném připojení se zde objeví skutečný inventář. Nedostupné údaje nezaměňujeme za zdravý stav ani nulový počet.</p>
+    </div>
+</section>
+
+<section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="next-heading">
+    <button type="button" aria-expanded="@showNext.ToString().ToLowerInvariant()" aria-controls="next-content" @onclick="() => showNext = !showNext" class="flex w-full items-center justify-between gap-4 text-left">
+        <span id="next-heading" class="font-semibold">Co budeme stavět dál?</span>
+        <span aria-hidden="true" class="text-xl text-slate-400">@(showNext ? "−" : "+")</span>
+    </button>
+    @if (showNext)
+    {
+        <div id="next-content" class="mt-4 grid gap-3 text-sm leading-6 text-slate-500 sm:grid-cols-3">
+            <p><strong class="text-slate-700">01 · Bezpečné čtení</strong><br />Přihlášení, skutečné stavy a tag filtry.</p>
+            <p><strong class="text-slate-700">02 · Detaily a logy</strong><br />Omezený buffer a pravdivý stav streamu.</p>
+            <p><strong class="text-slate-700">03 · Akce a MCP</strong><br />Oddělená oprávnění a stabilní command ID.</p>
+        </div>
+    }
+</section>
+
+<footer class="mt-8 flex flex-wrap justify-between gap-2 text-xs text-slate-400">
+    <span>HLCP Web · raný vývoj</span>
+    <span>Běžící kontejner ≠ zdravá aplikace</span>
+</footer>
+
+@code {
+    private bool showNext;
+}

@@ -112,6 +112,9 @@ omezení frekvence a backoff při chybě/429. Nezavádíme nový SignalR hub na 
 
 ## 6. Etapy a akceptační brány
 
+První implementační slice: základ P0 a čtecí knihovna/projekce z P1. P2–P6 zůstávají
+plánované; samotný dashboard shell neznačí dokončené připojení ani autentizaci.
+
 ### P0 — repozitář a sestavitelný základ
 
 Veřejné GitHub repo, README, plán, .gitignore, připnutý stabilní SDK a npm lock,

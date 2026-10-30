@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hlcp.Application/Hlcp.Application.csproj" />
+    <Project Path="src/Hlcp.Web/Hlcp.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hlcp.Tests/Hlcp.Tests.csproj" />
+  </Folder>
+</Solution>
