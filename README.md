@@ -10,8 +10,8 @@ Local management milestone implemented. This is not deployed or production-ready
 HLCP controller/agents remain in Go/CBOR; this repository is a separate client.
 The UI supports one admin login, a refreshing dashboard, node/tag filters, individual
 allowlisted resource actions with preview/confirmation, and web-originated operation
-history/result lookup. No Identity account system, roles or database is required.
-Live logs and MCP remain planned. Non-Development startup is still refused until
+history/result lookup, and filtered container log history/live streaming. No Identity
+account system, roles or database is required. MCP remains planned. Non-Development startup is still refused until
 HTTPS and deployment hardening are completed.
 
 Controller access requires explicitly configured server-side token files. Without

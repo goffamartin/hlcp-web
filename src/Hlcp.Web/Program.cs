@@ -47,12 +47,16 @@ builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingAdminState>(
 builder.Services.AddScoped<DashboardReader>();
 builder.Services.AddSingleton(new OperationJournal(Path.Combine(dataDirectory, "operations")));
 builder.Services.AddScoped<ResourceActions>();
+builder.Services.AddSingleton<LogReadBudget>();
+builder.Services.AddScoped<LogReader>();
 builder.Services.AddScoped<CircuitConnection>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler>(provider => provider.GetRequiredService<CircuitConnection>());
 builder.Services.AddSingleton<IHlcpTokenSource>(provider => new FileTokenSource(provider.GetRequiredService<IConfiguration>()["Hlcp:TokenFile"]));
 builder.Services.AddHttpClient("Hlcp", http => http.Timeout = Timeout.InfiniteTimeSpan)
     .ConfigurePrimaryHttpMessageHandler(HlcpReadClient.CreateHandler);
 builder.Services.AddScoped(provider => new HlcpReadClient(provider.GetRequiredService<IHttpClientFactory>().CreateClient("Hlcp"),
+    new Uri(provider.GetRequiredService<IConfiguration>()["Hlcp:Endpoint"] ?? "http://127.0.0.1:9444"), provider.GetRequiredService<IHlcpTokenSource>()));
+builder.Services.AddScoped(provider => new HlcpLogClient(provider.GetRequiredService<IHttpClientFactory>().CreateClient("Hlcp"),
     new Uri(provider.GetRequiredService<IConfiguration>()["Hlcp:Endpoint"] ?? "http://127.0.0.1:9444"), provider.GetRequiredService<IHlcpTokenSource>()));
 builder.Services.AddRateLimiter(options =>
 {
