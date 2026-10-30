@@ -1,7 +1,8 @@
 # Místní spuštění a přístup
 
-Web zatím vynucuje Development a `http://127.0.0.1:5088`. Je určený pro místní
-vývoj, nikoli publikování na LAN. Produkční HTTPS, systemd a DNS přijdou zvlášť.
+Vývoj používá Development a `http://127.0.0.1:5088`. Backend zůstává na loopbacku
+i v Production; pro LAN je připravený explicitní HTTPS proxy profil a
+[samostatný postup nasazení](lan-deployment.md). Skutečné nasazení zatím neproběhlo.
 
 ## Jedno přihlášení
 

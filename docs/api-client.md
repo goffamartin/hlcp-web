@@ -50,6 +50,7 @@ The UI keeps up to 500 records / 512 KiB of accounted text/record memory and bat
 renders at most four times per second. It renders escaped text, not HTML/ANSI.
 Log bodies never enter the operation journal or a server-side archive.
 
-The local host remains Development-only. See [setup](local-setup.md) for exact
+The backend remains loopback-only. Production requires the explicit HTTPS proxy profile.
+See [setup](local-setup.md) for exact
 credential/operation/log semantics. Real HomeLab acceptance and LAN deployment
 remain separate milestones.
