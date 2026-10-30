@@ -2,7 +2,7 @@
 
 `Hlcp.Application` contains HLCP 1.1 inventory DTOs, `HlcpReadClient`, tag validation
 and a pure dashboard projection. It does not reference Blazor, invoke the CLI,
-read filesystem credentials automatically or start log readers. Explicit preview,
+read filesystem credentials automatically. Explicit preview,
 submit and result-lookup methods also use the bounded transport; inventory reads
 never submit a command.
 
@@ -36,6 +36,20 @@ marker. Request bodies contain only command ID, resource ID and action. Command
 results must match the requested ID and success/code contract; diagnostic message
 text is omitted from web metadata. This is not a general HTTP proxy or shell API.
 
+`HlcpLogClient` uses only GET with the observer credential. History pages have a
+256 KiB transport cap, typed schema/record validation and opaque cursors. NDJSON
+validates schema/semantics, one request ID, contiguous agent sequences and explicit
+end events; controller keepalives and interruption ends use sequence zero. EOF without
+end is incomplete. Lines are bounded to 64 KiB, live responses to 8 MiB, idle reads to
+15 seconds and total follow duration to 10 minutes + 15 seconds. No automatic retry.
+
+`LogReader` checks the admin session and fresh native-container allowlist, shares a
+two-read process budget and rechecks session validity every 3 seconds even when idle.
+Circuit disconnect cancels the read rather than silently resuming on reconnect.
+The UI keeps up to 500 records / 512 KiB of accounted text/record memory and batches
+renders at most four times per second. It renders escaped text, not HTML/ANSI.
+Log bodies never enter the operation journal or a server-side archive.
+
 The local host remains Development-only. See [setup](local-setup.md) for exact
-credential/operation semantics. Live logs, real HomeLab acceptance and LAN deployment
+credential/operation/log semantics. Real HomeLab acceptance and LAN deployment
 remain separate milestones.

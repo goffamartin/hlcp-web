@@ -40,9 +40,7 @@ public sealed class HlcpReadClient
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(tokens);
-        if (!endpoint.IsAbsoluteUri || endpoint.Scheme != "http" || !endpoint.IsLoopback ||
-            endpoint.UserInfo.Length != 0 || endpoint.AbsolutePath != "/" || endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0)
-            throw new ArgumentException("The controller endpoint must be a plain loopback HTTP origin.", nameof(endpoint));
+        HlcpEndpoint.Validate(endpoint);
         this.timeout = timeout ?? TimeSpan.FromSeconds(5);
         if (this.timeout < TimeSpan.FromMilliseconds(50) || this.timeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(timeout));

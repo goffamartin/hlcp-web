@@ -9,7 +9,7 @@
     <div class="flex flex-wrap items-center gap-2">
         <select aria-label="Akce pro @Resource.Id" @bind="selected" disabled="@(Busy || Disabled)" class="max-w-36 rounded border border-slate-300 px-2 py-1 text-xs">
             <option value="">Vyber akci</option>
-            @foreach (var action in Resource.Actions.Where(action => action != "logs")) { <option value="@action">@action</option> }
+            @foreach (var action in Resource.Actions.Where(action => action != "logs" || Resource.Type != "container")) { <option value="@action">@action</option> }
         </select>
         <button @ref="opener" type="button" disabled="@(Busy || Disabled || selected.Length == 0)" @onclick="PrepareAsync" class="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">Provést…</button>
     </div>

@@ -26,6 +26,7 @@ public sealed class WebSecurityTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/dashboard")).StatusCode);
         var page = await client.GetAsync("/");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync("/nodes/synthetic-node/resources/synthetic-container/logs")).StatusCode);
         Assert.Contains("/account/login", page.Headers.Location!.ToString());
         Assert.Equal(0, factory.Controller.Calls);
         var reader = factory.Services.GetRequiredService<IServiceScopeFactory>().CreateScope();
@@ -184,6 +185,9 @@ internal sealed class SyntheticController : HttpMessageHandler
     public bool FailSubmission;
     public bool ForbidReads;
     public bool DenyAction;
+    public bool TaskLogs;
+    public int LogReads;
+    public Func<HttpResponseMessage>? LogResponse;
     private ResourceCommand? last;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -191,6 +195,15 @@ internal sealed class SyntheticController : HttpMessageHandler
         Interlocked.Increment(ref Calls);
         Assert.Equal(TestWeb.Token, request.Headers.Authorization?.Parameter);
         var path = request.RequestUri!.AbsolutePath;
+        if (path.EndsWith("/logs") || path.EndsWith("/logs/stream"))
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            LogReads++;
+            if (LogResponse is not null) return LogResponse();
+            return path.EndsWith("/stream")
+                ? HlcpLogClientTests.Reply(HlcpLogClientTests.Lines(HlcpLogClientTests.Event("start", 1), HlcpLogClientTests.Event("record", 2, record: HlcpLogClientTests.Record()), HlcpLogClientTests.Event("end", 3, "OK")))
+                : Reply(HlcpLogClientTests.Page());
+        }
         if (request.Method == HttpMethod.Get && path == "/v1/nodes")
         {
             if (ForbidReads) return new(HttpStatusCode.Forbidden) { Content = new StringContent("private upstream diagnostic " + TestWeb.Token) };
@@ -216,6 +229,6 @@ internal sealed class SyntheticController : HttpMessageHandler
         }
         throw new InvalidOperationException("Unexpected synthetic API path.");
     }
-    private static ResourceDescriptor Resource() => new() { Id = "synthetic-container", Type = "container", Actions = ["status", "restart", "logs"], Tags = ["synthetic", "production"] };
+    private ResourceDescriptor Resource() => new() { Id = "synthetic-container", Type = TaskLogs ? "task" : "container", Actions = TaskLogs ? ["logs"] : ["status", "restart", "logs"], Tags = ["synthetic", "production"] };
     private static HttpResponseMessage Reply<T>(T value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value, options: Json) };
 }

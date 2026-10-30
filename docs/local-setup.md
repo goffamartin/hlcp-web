@@ -54,7 +54,8 @@ VM; loopback neznamená jiný stroj ani hostitele z kontejneru.
 Observer slouží pro dashboard a ověření viditelného allowlistu. Operator se používá
 pro preview, spuštění a lookup vlastních operací. Bez OperatorTokenFile jsou ovládací
 prvky nedostupné. Akce musí projít allowlistem observeru i oprávněním operatoru v HLCP.
-Inventářová akce `logs` se nikdy neposílá jako COMMAND; logovací UI bude samostatně.
+Nativní kontejnerová akce `logs` se nikdy neposílá jako COMMAND; má vlastní logovací UI.
+Obyčejná script/service akce pojmenovaná `logs` si zachovává běžné command chování.
 Jediné webové přihlášení má přístup ke všem takto nakonfigurovaným resources.
 
 Vyber resource a akci. Náhled přes `/resolve` nic neprovádí; následné potvrzení ukáže
@@ -80,6 +81,40 @@ Dashboard obnovuje data po 5 s, bez překrývání, s backoff do 60 s při chyb�
 circuit další čtení pozastaví. Starší snímek zůstane viditelný jako zastaralý; aktuální
 počty se nenahrazují nulami. Filtry pracují nad již autorizovaným snímkem, nevytvářejí
 nové oprávnění. Tabulka zobrazuje nejvýše 200 řádků; pro větší seznam použij filtry.
+
+## Logy kontejneru
+
+V přehledu otevři **Logy** u kontejneru s povolenou akcí `logs`. Čtení používá observer
+credential, nevyžaduje operator token a nespouští COMMAND. Stránka sama nezačne číst:
+zvol **Načíst historii** nebo **Sledovat živě**. **Zastavit čtení** zastaví pouze odběr.
+
+Filtry: tail 0–1000, doslovný text do 256 UTF-8 bajtů, proud both/stdout/stderr a
+volitelné časy RFC3339 včetně pásma. „Od“ musí předcházet „Do“. Filtrace runtime nemusí
+vrátit tolik řádků, kolik udává tail. stdout/stderr jsou proudy runtime klienta;
+TTY kontejnery je mohou sloučit. Prázdné logy nejsou potvrzení zdraví aplikace.
+
+Historie má stránky po nejvýše 100 záznamech. **Další stránka snímku** přidá záznamy
+ze stejného zachycení pomocí neprůhledného cursoru, bez opakování filtrů. Cursor běžně
+vyprší do 2 minut nebo při evikci/restartu kontroleru. Potom načti nový snímek; nečekej
+úplnou návaznost. Změna filtrů zruší dosavadní výpis i cursor, nespouští nové čtení.
+
+UI buffer ponechá nejvýše 500 řádků / 512 KiB účtovaného textu a režie záznamů; starší
+řádky průběžně odstraní a počet zobrazí. Přenosové truncation/gap a odstranění z UI
+jsou rozlišené. Aktualizace se dávkují po 250 ms, posouvání na konec lze vypnout.
+HTML zůstává textem a řídicí znaky se pro zobrazení nahrazují. Nejde o stdin, shell
+ani připojený terminál; web nevytváří archiv logů ani je nepíše do historie operací.
+
+Výpis bez korektní události end je přerušený, ne úspěšný. Zastavení limitem, změna
+session agenta, forbidden nebo backpressure zůstanou viditelné jako neúplnost.
+Neprobíhá automatický reconnect. Opuštění stránky nebo ztráta webového spojení čtení
+zruší; obnovení circuitu samo stream nespustí. Platnost správcovské relace se při
+čtení kontroluje také každé 3 sekundy, včetně nečinného streamu.
+
+Celý proces povolí nejvýše 2 současná logovací čtení. Kontroler/agent mají ještě své
+limity; 429 znamená uvolnit jiné čtení a zkusit to ručně. Web limituje NDJSON řádek na
+64 KiB, živý přenos na 8 MiB, nečinnost na 15 s a celkový stream na 10 minut + 15 s.
+Historická odpověď má limit 256 KiB / 20 s. Omezení webu nezaručují úplnou retenci
+runtime a nezvyšují limity kontroleru.
 
 ## Co zbývá před LAN nasazením
 
