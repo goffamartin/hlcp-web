@@ -111,7 +111,10 @@ else if (state.Nodes is null)
                 <tbody>
                     @foreach (var row in snapshot.Resources.Take(200))
                     {
-                        <tr @key="(row.NodeId, row.Resource.Id)" class="border-b border-slate-100 last:border-0"><th scope="row" class="px-3 py-4 font-medium">@row.Resource.Id <span class="block text-xs font-normal text-slate-400">@row.Resource.Type</span></th><td class="px-3 py-4">@row.NodeId</td><td class="px-3 py-4"><span class="rounded-full px-2.5 py-1 text-xs @StateColor(row.State)">@StateLabel(row.State)</span></td><td class="px-3 py-4 text-xs text-slate-500">@string.Join(", ", row.Resource.Tags ?? [])</td><td class="px-3 py-4"><ResourceControls Node="@row.NodeId" Resource="@row.Resource" Disabled="@(stale || row.State == ResourceDisplayState.Stale)" /></td></tr>
+                        <tr @key="(row.NodeId, row.Resource.Id)" class="border-b border-slate-100 last:border-0"><th scope="row" class="px-3 py-4 font-medium">@row.Resource.Id <span class="block text-xs font-normal text-slate-400">@row.Resource.Type</span></th><td class="px-3 py-4">@row.NodeId</td><td class="px-3 py-4"><span class="rounded-full px-2.5 py-1 text-xs @StateColor(row.State)">@StateLabel(row.State)</span></td><td class="px-3 py-4 text-xs text-slate-500">@string.Join(", ", row.Resource.Tags ?? [])</td><td class="px-3 py-4"><ResourceControls Node="@row.NodeId" Resource="@row.Resource" Disabled="@(stale || row.State == ResourceDisplayState.Stale)" />
+                            @if (row.Resource.Type == "container" && row.Resource.Actions.Contains("logs", StringComparer.Ordinal))
+                            { <a href="@($"/nodes/{Uri.EscapeDataString(row.NodeId)}/resources/{Uri.EscapeDataString(row.Resource.Id)}/logs")" class="mt-2 inline-block text-xs font-medium text-emerald-700 underline">Logy</a> }
+                        </td></tr>
                     }
                 </tbody>
             </table>

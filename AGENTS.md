@@ -14,7 +14,9 @@ descriptive English commit messages. Keep changes as small validated milestones.
   accounts, a user database or roles without a new product requirement.
 - Action admission markers must be persisted before POST. Never automatically retry
   a command after ambiguous failure; look up the existing ID.
-- Keep the bootstrap web host Development-only and loopback-only until authentication is implemented.
+- Keep the web host Development-only and loopback-only until LAN/HTTPS deployment is qualified.
+- Log reads use the observer credential and never COMMAND. Bound line/response/UI buffers,
+  require explicit stream end, cancel on navigation/disconnect/revocation, and never auto-reconnect.
 - Add frontend styles with complete literal Tailwind class names so source scanning can find them.
 - Run restore/build/test/publish plus dependency audits for the milestone; distinguish browser QA
   and real HomeLab acceptance from unit/integration tests.

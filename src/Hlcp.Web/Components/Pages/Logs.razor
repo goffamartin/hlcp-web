@@ -1,0 +1,238 @@
+@page "/nodes/{Node}/resources/{Resource}/logs"
+@attribute [Authorize(Policy = "Admin")]
+@implements IAsyncDisposable
+@using Hlcp.Web.Services
+@using Microsoft.JSInterop
+@inject LogReader Reader
+@inject AuthenticationStateProvider Authentication
+@inject CircuitConnection Connection
+@inject IJSRuntime JavaScript
+
+<PageTitle>Logy · @Resource | HLCP Web</PageTitle>
+<header>
+    <a href="/" class="text-sm font-medium text-emerald-700 hover:underline">← Zpět na přehled</a>
+    <p class="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">@Node</p>
+    <h1 class="mt-2 break-all text-3xl font-semibold tracking-tight">Logy · @Resource</h1>
+    <p class="mt-3 text-sm leading-6 text-slate-500">Historie a živý výpis kontejneru. Zastavení čtení nemění stav kontejneru.</p>
+</header>
+
+<section aria-label="Filtry logů" class="mt-7 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+    <fieldset disabled="@busy" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <label class="text-sm font-medium">Posledních řádků <span class="text-xs font-normal text-slate-500">(0–1000)</span>
+            <input type="number" min="0" max="1000" @bind="tail" @bind:after="FiltersChanged" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+        </label>
+        <label class="text-sm font-medium">Výstupní proud
+            <select @bind="stream" @bind:after="FiltersChanged" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"><option value="both">Oba proudy</option><option value="stdout">stdout</option><option value="stderr">stderr</option></select>
+        </label>
+        <label class="text-sm font-medium">Obsahuje text
+            <input type="text" maxlength="256" @bind="contains" @bind:after="FiltersChanged" placeholder="Doslovný text, rozlišuje velikost písmen" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        </label>
+        <label class="text-sm font-medium">Od <span class="text-xs font-normal text-slate-500">(volitelné)</span>
+            <input type="text" maxlength="40" @bind="since" @bind:after="FiltersChanged" placeholder="2026-10-30T08:00:00Z" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        </label>
+        <label class="text-sm font-medium">Do <span class="text-xs font-normal text-slate-500">(volitelné)</span>
+            <input type="text" maxlength="40" @bind="until" @bind:after="FiltersChanged" placeholder="2026-10-30T09:00:00+01:00" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        </label>
+    </fieldset>
+    <p class="mt-4 text-xs leading-5 text-slate-500">Čas musí obsahovat pásmo, například Z pro UTC nebo +01:00. stdout/stderr označují proudy klienta runtime; u TTY kontejneru mohou být sloučené.</p>
+    <div class="mt-5 flex flex-wrap gap-3">
+        <button type="button" disabled="@busy" @onclick="() => StartAsync(false)" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Načíst historii</button>
+        <button type="button" disabled="@busy" @onclick="() => StartAsync(true)" class="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Sledovat živě</button>
+        @if (busy)
+        { <button type="button" @onclick="StopAsync" class="rounded-lg border border-red-300 px-4 py-2.5 text-sm font-medium text-red-800">Zastavit čtení</button> }
+        @if (nextCursor is not null)
+        { <button type="button" disabled="@busy" @onclick="NextPageAsync" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm disabled:opacity-40">Další stránka snímku</button> }
+    </div>
+</section>
+
+<section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="log-output-heading">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="log-output-heading" class="text-lg font-semibold">Výpis logů</h2>
+        <label class="flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" @bind="followBottom" />Posouvat na konec</label>
+    </div>
+    <p role="status" class="mt-3 text-sm leading-6 @(warning ? "text-amber-900" : "text-slate-600")">@status</p>
+    @if (capturedAt is { } captured)
+    { <p class="mt-1 text-xs text-slate-400">Snímek: @captured.ToLocalTime().ToString("dd. MM. yyyy HH:mm:ss zzz")</p> }
+    @if (gap || sourceTruncated || buffer.HasTruncatedRecords || buffer.Removed > 0)
+    {
+        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+            @if (gap) { <p>Doručení výpisu není úplné. Návaznost logů není zaručena.</p> }
+            @if (sourceTruncated || buffer.HasTruncatedRecords) { <p>Zdroj omezil výpis nebo zkrátil některé řádky.</p> }
+            @if (buffer.Removed > 0) { <p>Z místního bufferu odstraněno @buffer.Removed starších řádků. Uchovává se nejvýše 500 řádků / 512 KiB.</p> }
+        </div>
+    }
+    <div @ref="output" role="region" aria-label="Text logů" aria-live="off" tabindex="0" dir="ltr" class="mt-4 max-h-[32rem] min-h-40 overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-200 focus:outline-emerald-600">
+        @if (buffer.Records.Count == 0) { <p class="font-sans text-slate-400">@(busy ? "Čekám na řádky…" : "Zatím žádné řádky. Prázdný výpis nepotvrzuje zdraví aplikace.")</p> }
+        @foreach (var record in buffer.Records)
+        {
+            <p class="whitespace-pre-wrap [overflow-wrap:anywhere] [unicode-bidi:plaintext]"><span class="text-slate-500">@(record.Timestamp.Length == 0 ? "bez času" : record.Timestamp) [@record.Stream]</span> @LogBuffer.Display(record.Text)@(record.Truncated ? " [zkráceno]" : "")</p>
+        }
+    </div>
+    <p class="mt-4 text-xs leading-5 text-slate-500">Zdrojem jsou uchované logy runtime, nikoli archiv HLCP. Nové čtení může předchozí výpis překrýt nebo vynechat část záznamů. Obsah se ukládá jen do omezeného bufferu této stránky.</p>
+</section>
+
+@code {
+    [Parameter] public string Node { get; set; } = "";
+    [Parameter] public string Resource { get; set; } = "";
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly LogBuffer buffer = new();
+    private CancellationTokenSource? reading;
+    private Task? running;
+    private IJSObjectReference? module;
+    private ElementReference output;
+    private string lastTarget = "", tail = "100", stream = "both", contains = "", since = "", until = "";
+    private string status = "Vyber historii nebo živé sledování.", sourceSession = "";
+    private string? nextCursor;
+    private DateTimeOffset? capturedAt;
+    private bool busy, warning, gap, sourceTruncated, dirty, scrollPending, followBottom = true, stoppedByUser, disposed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var target = Node + "\0" + Resource;
+        if (lastTarget == target) return;
+        await CancelReadAsync();
+        lastTarget = target;
+        Reset();
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollPending || !followBottom || disposed) return;
+        scrollPending = false;
+        try
+        {
+            module ??= await JavaScript.InvokeAsync<IJSObjectReference>("import", "/logs.js");
+            await module.InvokeVoidAsync("scrollEnd", output);
+        }
+        catch (JSDisconnectedException) { reading?.Cancel(); }
+    }
+    private void Reset()
+    {
+        buffer.Clear(); nextCursor = null; capturedAt = null; sourceSession = ""; gap = false; sourceTruncated = false; warning = false;
+        status = "Vyber historii nebo živé sledování.";
+    }
+    private void FiltersChanged() { if (!busy) Reset(); }
+    private Task StartAsync(bool follow) => BeginAsync(follow, null);
+    private Task NextPageAsync() => nextCursor is { } cursor ? BeginAsync(false, cursor) : Task.CompletedTask;
+    private async Task BeginAsync(bool follow, string? cursor)
+    {
+        if (busy || disposed) return;
+        LogQuery? query = null;
+        if (cursor is null)
+        {
+            if (!int.TryParse(tail, out var count)) { status = "Zadej počet řádků od 0 do 1000."; warning = true; return; }
+            query = new(count, stream, contains ?? "", since ?? "", until ?? "");
+            try { query.Validate(); }
+            catch (LogReadException) { status = FailureText(LogFailure.InvalidQuery); warning = true; return; }
+            Reset();
+        }
+        busy = true; stoppedByUser = false; warning = false;
+        status = follow ? "Připojuji živý výpis…" : "Načítám snímek historie…";
+        reading = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        running = RunReadAsync(follow, query, cursor, reading.Token);
+        await running;
+    }
+    private async Task RunReadAsync(bool follow, LogQuery? query, string? cursor, CancellationToken cancellationToken)
+    {
+        using var rendering = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var renderer = RenderBatchesAsync(rendering.Token);
+        try
+        {
+            var user = (await Authentication.GetAuthenticationStateAsync()).User;
+            if (follow)
+            {
+                await foreach (var item in Reader.FollowAsync(user, Node, Resource, query!, cancellationToken))
+                {
+                    if (item.Record is not null) buffer.Add(item.Record);
+                    if (item.Kind == "start") status = "Živý výpis je připojený.";
+                    if (item.Kind == "end")
+                    {
+                        gap |= item.Gap;
+                        warning = item.Code != "OK" || item.Gap;
+                        status = warning ? $"{EndText(item.Code)} ({item.Code}). Návaznost není zaručena." : "Stream korektně skončil.";
+                    }
+                    dirty = true;
+                }
+            }
+            else
+            {
+                var page = await Reader.HistoryAsync(user, Node, Resource, query, cursor, cancellationToken);
+                if (cursor is not null && (page.CapturedAt != capturedAt || page.SourceSession != sourceSession)) throw new LogReadException(LogFailure.InvalidResponse);
+                foreach (var row in page.Records) buffer.Add(row);
+                capturedAt = page.CapturedAt; sourceSession = page.SourceSession;
+                nextCursor = string.IsNullOrEmpty(page.NextCursor) ? null : page.NextCursor;
+                gap |= page.Gap; sourceTruncated |= page.Truncated;
+                warning = page.Code != "OK" || gap || sourceTruncated;
+                status = page.Code is not ("OK" or "BYTE_LIMIT") ? $"Čtení historie nebylo dokončeno ({page.Code}). Zobrazuji získané řádky." : warning ? $"Historie načtena s omezením ({page.Code})." : nextCursor is null ? "Snímek historie načten." : "Stránka historie načtena; další stránka patří stejnému snímku.";
+            }
+        }
+        catch (UnauthorizedAccessException) { warning = true; gap |= follow; nextCursor = null; status = "Přístup byl odvolán nebo přihlášení vypršelo. Přihlas se znovu."; }
+        catch (LogReadException error) { warning = true; gap |= follow; nextCursor = null; status = FailureText(error.Failure); }
+        catch (HlcpReadException) { warning = true; nextCursor = null; status = "Resource nelze ověřit. Zkontroluj dostupnost kontroleru a oprávnění ke čtení."; }
+        catch (OperationCanceledException)
+        {
+            warning = !stoppedByUser; gap |= follow && !stoppedByUser; nextCursor = null;
+            status = stoppedByUser ? "Čtení zastaveno uživatelem. Kontejner zůstává beze změny." : "Spojení s webem se přerušilo. Čtení bylo zastaveno; nové spusť ručně.";
+        }
+        finally
+        {
+            await rendering.CancelAsync();
+            await renderer;
+            busy = false;
+            reading?.Dispose(); reading = null;
+            if (!disposed) { scrollPending = true; await InvokeAsync(StateHasChanged); }
+        }
+    }
+    private async Task RenderBatchesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (!dirty || disposed) continue;
+                dirty = false; scrollPending = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+    private async Task StopAsync() { stoppedByUser = true; await CancelReadAsync(); }
+    private async Task CancelReadAsync() { if (reading is not null) await reading.CancelAsync(); if (running is not null) await running; }
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        await lifetime.CancelAsync();
+        await CancelReadAsync();
+        lifetime.Dispose();
+        if (module is not null) { try { await module.DisposeAsync(); } catch (JSDisconnectedException) { } }
+    }
+    private static string FailureText(LogFailure failure) => failure switch
+    {
+        LogFailure.Forbidden => "Čtení logů není povolené pro tuto relaci nebo resource.",
+        LogFailure.CursorExpired => "Snímek historie vypršel nebo byl uvolněn. Načti novou historii; návaznost není zaručena.",
+        LogFailure.Capacity => "Limit současných čtení je vyčerpaný. Zastav jiný výpis a zkus to znovu.",
+        LogFailure.InvalidQuery => "Neplatné filtry: 0–1000 řádků, doslovný text do 256 UTF-8 bajtů a časy včetně pásma. Čas Od musí předcházet Do.",
+        LogFailure.Unsupported => "Kontroler nebo agent tento způsob čtení logů nepodporuje.",
+        LogFailure.CredentialUnavailable => "Token pro čtení není dostupný. Ověř serverové nastavení webu.",
+        LogFailure.NotFound => "Logy nebo resource nejsou dostupné. Ověř inventář a povolenou akci logs.",
+        LogFailure.InvalidSequence or LogFailure.InvalidResponse => "Výpis nesplňuje očekávaný formát nebo pořadí událostí. Čtení bylo přerušeno.",
+        LogFailure.ByteLimit => "Čtení dosáhlo limitu velikosti. Výpis nemusí být úplný.",
+        LogFailure.Timeout => "Vypršel časový limit nebo nepřišla očekávaná data. Čtení bylo přerušeno.",
+        LogFailure.Interrupted => "Spojení skončilo bez korektního ukončení streamu. Výpis je neúplný.",
+        _ => "Čtení logů nebylo dokončeno. Ověř dostupnost kontroleru a agenta; čtení se nebude automaticky opakovat."
+    };
+    private static string EndText(string? code) => code switch
+    {
+        "BYTE_LIMIT" => "Stream dosáhl limitu přenosu",
+        "TIME_LIMIT" => "Stream dosáhl časového limitu",
+        "BACKPRESSURE" => "Zdroj nestíhal doručovat data",
+        "SESSION_LOST" => "Spojení s agentem se přerušilo nebo změnilo",
+        "FORBIDDEN" or "NOT_ALLOWED" => "Oprávnění ke čtení bylo odmítnuto",
+        "RUNTIME_FAILED" => "Runtime nedokončil čtení logů",
+        "CAPACITY" => "Zdroj vyčerpal limit současných čtení",
+        "UNSUPPORTED" => "Zdroj tento výpis nepodporuje",
+        "INVALID_SEQUENCE" => "Nesouhlasí pořadí událostí streamu",
+        "CANCELED" => "Zdroj čtení zrušil",
+        _ => "Stream skončil s neúplným doručením"
+    };
+}
