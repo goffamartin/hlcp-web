@@ -171,6 +171,30 @@ public sealed class HlcpReadClientTests
         Assert.Equal(["kostka", "production"], await Client(http).GetTagsAsync("node/one"));
     }
 
+    [Theory]
+    [InlineData("{\"command_id\":\"foreign\",\"success\":true,\"code\":\"OK\"}")]
+    [InlineData("{\"command_id\":\"op\",\"success\":false,\"code\":\"OK\"}")]
+    [InlineData("{\"command_id\":\"op\",\"code\":\"OK\"}")]
+    public async Task CommandResultsMustMatchIdAndSuccessContract(string body)
+    {
+        using var http = Http(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/v1/nodes/n/commands", request.RequestUri!.AbsolutePath);
+            return Json(body);
+        });
+        var error = await Assert.ThrowsAsync<HlcpReadException>(() => Client(http).SubmitAsync("n", new("op", "r", "restart")));
+        Assert.Equal(HlcpFailure.InvalidResponse, error.Failure);
+    }
+
+    [Fact]
+    public async Task PreviewCannotSubstituteAnotherTarget()
+    {
+        using var http = Http(_ => Json("""{"node":"n","resource":"other","action":"restart","command":{"command_id":"op","resource_id":"r","action":"restart"}}"""));
+        var error = await Assert.ThrowsAsync<HlcpReadException>(() => Client(http).PreviewAsync("n", new("op", "r", "restart")));
+        Assert.Equal(HlcpFailure.InvalidResponse, error.Failure);
+    }
+
     private static HlcpReadClient Client(HttpClient http) => new(http, new("http://127.0.0.1:9444"), new TokenSource());
     private static HttpClient Http(Func<HttpRequestMessage, HttpResponseMessage> callback) =>
         new(new Handler((request, _) => Task.FromResult(callback(request))));

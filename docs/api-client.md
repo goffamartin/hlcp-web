@@ -1,10 +1,12 @@
-# Read-only client boundary
+# HLCP API client boundary
 
 `Hlcp.Application` contains HLCP 1.1 inventory DTOs, `HlcpReadClient`, tag validation
 and a pure dashboard projection. It does not reference Blazor, invoke the CLI,
-submit commands, read filesystem credentials automatically or start log readers.
+read filesystem credentials automatically or start log readers. Explicit preview,
+submit and result-lookup methods also use the bounded transport; inventory reads
+never submit a command.
 
-The host will supply `IHlcpTokenSource` after credential and authentication setup.
+The authenticated host supplies `IHlcpTokenSource` from an explicitly selected file.
 Real HTTP clients must use `HlcpReadClient.CreateHandler()` (no redirects or
 environment proxy). Endpoint validation accepts only a plain loopback HTTP origin,
 matching the Go controller's management boundary. The request deadline includes
@@ -22,6 +24,18 @@ missing/unobserved values unknown; running containers are not application health
 Tag filtering uses exact AND semantics and total counts deduplicate node/resource
 identities. Tag filters restrict the contributing nodes as well as resources.
 
-This is the first P1 slice, not the finished application authorization layer.
-Group cards, refresh coordination, credential-file providers, authenticated host
-integration, mutation tracking and live logs remain in later milestones.
+`DashboardState` keeps the last successful snapshot, marks it stale after errors
+or 20 seconds, and supplies 5–60 second backoff. The UI performs sequential polling
+only after Interactive Server connects; it pauses while the circuit is disconnected.
+Filtering is local over an already scoped snapshot, including explicit app-tag cards.
+
+`DashboardReader` and `ResourceActions` check the server-side admin session before
+every read/mutation. Actions additionally require a fresh visible resource allowlist,
+an operator credential, a resolve preview and a persisted create-once submission
+marker. Request bodies contain only command ID, resource ID and action. Command
+results must match the requested ID and success/code contract; diagnostic message
+text is omitted from web metadata. This is not a general HTTP proxy or shell API.
+
+The local host remains Development-only. See [setup](local-setup.md) for exact
+credential/operation semantics. Live logs, real HomeLab acceptance and LAN deployment
+remain separate milestones.

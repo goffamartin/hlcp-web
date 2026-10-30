@@ -12,6 +12,7 @@ přepis kontroleru či agentů. Protokol Go/CBOR a jejich autorizační pravidla
 - Web přístupný pouze z LAN/WireGuard VPN přes vlastní HTTPS hostname v AdGuard DNS.
 - Pozdější samostatný MCP endpoint ve stejném ASP.NET Core hostu.
 - České uživatelské rozhraní; názvy API, typů a kódu anglicky.
+- Jediné správcovské přihlášení bez Identity účtů, rolí a databáze; potvrzeno vlastníkem.
 
 Mimo první verzi: veřejný hosting/tunel pro správu, správa YAML přes web,
 provisioning kontejnerů, libovolné shell příkazy, hromadné akce podle tagů,
@@ -91,14 +92,14 @@ omezení frekvence a backoff při chybě/429. Nezavádíme nový SignalR hub na 
   query nebo cesty. ID se escapují jako segmenty, filtry jako query hodnoty.
 - Žádné redirects, environment proxy ani libovolné URL z prohlížeče; timeouty,
   omezení velikosti odpovědi a bezpečné chybové kódy. Token načítá jen server.
-- Produkční web vyžaduje přihlášení i za VPN. Navržený základ: ASP.NET Core Identity
-  a SQLite, bez veřejné registrace. Správce se založí explicitním lokálním bootstrapem,
-  heslo nikdy v argv/git/logu. Viewer/operator jsou oddělené role.
-- SQLite eviduje účty a vlastní operační metadata, ne kopii stavu HLCP ani obsah logů.
-  Pro první čistě read-only vývojovou etapu se databáze nezavádí předčasně.
+- Produkční web vyžaduje přihlášení i za VPN. Zjednodušený dohodnutý základ: jediné
+  správcovské heslo, salted hash v chráněném souboru, cookie a lokální změna hesla.
+  Žádné Identity účty, databáze, veřejná registrace nebo viewer/operator role webu.
+- Vlastní operační metadata jsou omezená evidence v souborech, ne kopie stavu HLCP
+  ani obsah logů. Webové přihlášení a HLCP observer/operator credentials jsou různé věci.
 - Cookie Secure/HttpOnly, antiforgery, omezení login pokusů, persistentní Data Protection
   klíče, žádné sdílení admin tokenu přes HTML/JS. Autorizace i v aplikačních službách,
-  nikoli pouze skrytím tlačítka. Testy zahrnou nepřihlášeného uživatele a viewer roli.
+  nikoli pouze skrytím tlačítka. Testy zahrnou anonymní, odvolanou a expirovanou relaci.
 - Web dostane vlastní observer credential; operator credential až s mutační etapou.
   HLCP pak audituje identitu gateway; konkrétního webového uživatele eviduje web.
   Nepředstíráme per-user HLCP audit pomocí důvěry v `X-User` hlavičku.
@@ -107,13 +108,16 @@ omezení frekvence a backoff při chybě/429. Nezavádíme nový SignalR hub na 
 - Stabilní command ID uložit před POST; při reconnectu, timeoutu nebo dvojkliku
   dohledat původní ID, neopakovat požadavek s novým. Chybějící výsledek je neznámý,
   nikoli důkaz selhání nebo rollbacku. Odpojení circuitu nevrací provedenou akci zpět.
-- Vlastní operační metadata mají retenci (návrh 30 dní / 10 000 záznamů). Neuchovávat
+- Vlastní operační metadata mají limit 10 000 příprav; plný store odmítá další příjem.
+  Automatické mazání/retence zatím není zavedena. Neuchovávat
   tokeny, raw HTTP hlavičky ani potenciálně citlivé výsledkové/logovací texty v auditu.
 
 ## 6. Etapy a akceptační brány
 
-První implementační slice: základ P0 a čtecí knihovna/projekce z P1. P2–P6 zůstávají
-plánované; samotný dashboard shell neznačí dokončené připojení ani autentizaci.
+Implementováno: P0/P1, místní dashboard s jedním přihlášením (P2) a jednotlivé akce
+s evidencí ID (základ P4). Ověření je syntetické; přijetí na skutečném HomeLabu ani
+LAN nasazení neproběhlo. P3 logy, samostatné detailní stránky, P5 a P6 zbývají.
+Viz [místní provoz a přesné limity](local-setup.md).
 
 ### P0 — repozitář a sestavitelný základ
 
@@ -139,7 +143,7 @@ k reálnému kontroleru nebo čtení jeho tokenu bez explicitní konfigurace.
 
 ### P2 — bezpečný read-only web
 
-Přihlášení/role, dashboard a stránky uzlů/resources, filtry a pravdivé prázdné/chybové
+Jediné přihlášení, dashboard a stránky uzlů/resources, filtry a pravdivé prázdné/chybové
 stavy. Zvlášť ověřit lifecycle Interactive Server/prerender, cancellation a refresh.
 
 Hotovo když: lokální browser QA ověří desktop/mobil/klávesnici a reconnect; nepřihlášený
@@ -160,12 +164,12 @@ nesmí zastavit kontejner; přerušení nemá vést k nekonečné automatické r
 
 ### P4 — jednotlivé akce a vlastní historie
 
-Operator oprávnění, resolve preview, potvrzení, přidělení/uložení command ID,
+Platné přihlášení a oddělený HLCP operator credential, resolve preview, potvrzení, přidělení/uložení command ID,
 submission a dohledání výsledku. Nabízet jen akce povolené konkrétním resource.
 Historie se jasně jmenuje „Operace z webu“, nikoli „všechny operace kontroleru“.
 
-Hotovo když: dvojklik/reconnect/retry nezpůsobí novou logickou operaci, viewer nemůže
-mutovat přes UI ani backend, timeout zůstane neznámým výsledkem, restart webu zachová
+Hotovo když: dvojklik/reconnect/retry stejného ID nezpůsobí novou logickou operaci,
+nepřihlášený nemůže mutovat přes UI ani backend, timeout zůstane neznámým výsledkem, restart webu zachová
 evidované IDs. Mutační live test jen na vyhrazeném smoke resource; ne na produkčních
 aplikacích bez dalšího souhlasu.
 
@@ -200,7 +204,7 @@ automatický deploy do HomeLabu při pushi. Release a živé nasazení jsou odd�
 
 - Unit: projekce/stavy/počty/filtry a pravidla operací.
 - HTTP integrační: syntetický HLCP server, auth, cesty, limity, error/stream scénáře.
-- Web integrační: cookies, antiforgery, role, přímé neautorizované požadavky.
+- Web integrační: cookies, antiforgery, odvolání relace, přímé neautorizované požadavky.
 - Browser: navigace, filtry, přístupnost, log buffer, reconnect a potvrzení akcí.
 - CI: locked restore, Release build, test, Tailwind build, publish, kontrola závislostí.
 - Provozní přijetí: skutečný kontroler 1.1.0+, read-only zkouška před každou mutací.
@@ -208,8 +212,8 @@ automatický deploy do HomeLabu při pushi. Release a živé nasazení jsou odd�
 ## 8. Rozhodnutí před produkčním nasazením
 
 - Přesný LAN hostname, IP, firewall rozsahy a způsob vydávání/obnovování HTTPS certifikátu.
-- Bootstrap správce a konkrétní node/resource scopes obou webových credentials.
-- Potvrzení malé SQLite evidence uživatelů/vlastních operací a retence.
+- Konkrétní node/resource scopes obou webových credentials a provozní nastavení hesla.
+- Ověření obnovy a údržby souborové evidence operací; případná automatická retence.
 - Licence veřejného repozitáře — veřejnost sama není licence; zatím ji nevymýšlíme.
 - MCP klient, jeho síťová dosažitelnost a autentizace se rozhodnou před etapou P6.
 
