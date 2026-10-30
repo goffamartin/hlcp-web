@@ -26,7 +26,7 @@ public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inven
     private async Task VerifyAllowlistAsync(string node, string resource, string action, CancellationToken cancellationToken)
     {
         var rows = await inventory.GetResourcesAsync(node, cancellationToken: cancellationToken);
-        if (action == "logs" || !rows.Any(row => row.Id == resource && row.Actions.Contains(action, StringComparer.Ordinal)))
+        if (!rows.Any(row => row.Id == resource && row.Actions.Contains(action, StringComparer.Ordinal) && !(row.Type == "container" && action == "logs")))
             throw new HlcpReadException(HlcpFailure.CommandRefused);
     }
 

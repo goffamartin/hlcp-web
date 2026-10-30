@@ -20,6 +20,27 @@
 - Pauza/obnovení polling smyčky při ztrátě circuitu je ověřena unit testem; plný
   browser reconnect po výpadku sítě ještě není samostatně provozně přijatý.
 
+## Navazující milník: logovací UI
+
+2026-10-30, stejné SDK/runtime. Celkem 104 úspěšných testů.
+
+- Typed history a GET-only NDJSON, přesné filtry a neprůhledné cursory; HTTP chyby
+  včetně 410/429 bez výpisu odpovědí, tokenů a soukromých cest.
+- Validace schématu, významu proudů, ID a sekvence; keepalive, korektní end, gap,
+  truncation, předčasné EOF, změněné ID, neplatný JSON a nedovolené pořadí.
+- Omezený řádek a kumulativní stream, historické tělo bez Content-Length, idle timeout,
+  odlišné ruční cancellation, zavření response body a omezený UI buffer.
+- Anonymní přístup bez kontaktu s kontrolerem; observer bez operator tokenu, fresh
+  allowlist, procesní budget, uvolnění slotů a rušení při výpadku circuitu. Změna hesla
+  zruší i idle stream, aniž čeká na další záznam. Čtení nevytváří command/operation.
+- Obyčejná task/script akce pojmenovaná logs zůstává běžnou akcí; nativní logovací
+  čtení se zpřístupňuje pouze kontejneru s povolenou akcí logs.
+- Browser QA proti syntetickému API: historie a druhá stránka téhož snímku, live
+  výpis, ruční stop a uzavření odběru při navigaci, EOF bez end jako přerušení,
+  BYTE_LIMIT/gap jako neúplné doručení, desktop 1440 px a mobil 390 px bez přetečení.
+  HTML payloady zůstaly inertním textem (žádný vložený img/script ani spuštěný kód),
+  řídicí znaky se nespustily. Konzole prohlížeče bez errors/warnings.
+
 Neověřeno: skutečný HLCP, scope produkčních tokenů, LAN/VPN/HTTPS, systemd, backup/
-restore a výpadek napájení. Žádná produkční aplikace nebyla restartována. Logovací UI,
-MCP, samostatné detailní stránky a produkční nasazení nejsou součástí tohoto milníku.
+restore a výpadek napájení. Žádná produkční aplikace nebyla restartována. MCP,
+obecné detailní stránky a produkční nasazení zůstávají mimo tyto místní milníky.
