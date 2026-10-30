@@ -56,7 +56,31 @@ ACL, Secure antiforgery cookie, anonymní API 401 a offline validaci systemd uni
 Výsledek konkrétního běhu je v jeho GitHub Checks; tato sada nenahrazuje provozní
 přijetí na cílové VM. Nic se z workflow nenasazuje.
 
-Neověřeno: skutečný HLCP, scope produkčních tokenů, skutečné LAN/VPN/HTTPS, běh
+V rámci této syntetické sady neověřeno: skutečný HLCP, scope produkčních tokenů, skutečné LAN/VPN/HTTPS, běh
 systemd služby na cílové VM, backup/restore a výpadek napájení. Žádná produkční
-aplikace nebyla restartována. MCP, obecné detailní stránky a skutečné produkční
-nasazení zůstávají mimo tyto místní milníky.
+aplikace nebyla restartována.
+
+## Detaily uzlů/resources a výstupy akcí
+
+2026-10-30: 129 úspěšných testů, locked restore a Release build bez warnings.
+Audity npm a NuGet bez nalezených zranitelností.
+
+- Testy ověřují předání úspěšného i chybového `message`, UTF-8 limit 4096 bajtů,
+  prázdný výstup, odmítnutí chybějícího výstupu v API a čtení starých metadat bez něj.
+- Výstup zůstává v paměti; journal neobsahuje jeho text. Známý výsledek lze načíst
+  observer credentialem i po vypnutí operator konfigurace. Filtrování historie
+  na uzel/resource předchází limitu posledních 50 položek.
+- Read-only status se před odesláním znovu ověřuje. Změněný mutační preview se odmítne
+  bez POST; vlastní task/script status vyžaduje potvrzení.
+- Browser QA na syntetickém loopback API: dashboard → uzly → uzel → resource → logy
+  a zpět, přechod mezi resources stejné routy bez starého výstupu, okamžitý status,
+  načtení výstupu z historie, zrušený script status a potvrzená syntetická restart akce.
+  JSON byl odsazený, HTML inertní; desktop a mobil 390 px bez přetečení stránky,
+  konzole bez errors/warnings. Testovací restart neposílal příkaz do HomeLabu.
+
+## Průběžné potvrzení vlastníka na HomeLabu
+
+Vlastník potvrdil funkční HTTPS přístup na `hlcp.home.goffa.cz` a čtení kontejnerových
+logů přes nasazenou předchozí verzi. Nové detailní stránky a výstupy akcí tímto ještě
+nejsou živě ověřené. VPN, backup/restore a výpadek napájení zůstávají nepřijaté;
+MCP zatím není implementovaný.
