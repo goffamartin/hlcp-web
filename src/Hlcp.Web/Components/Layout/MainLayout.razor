@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<div class="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
+    <aside class="bg-slate-950 px-6 py-6 text-slate-100 lg:min-h-screen lg:py-9">
+        <a href="/" class="flex items-center gap-3 text-xl font-semibold tracking-tight" aria-label="HLCP Web, hlavní stránka">
+            <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 font-mono text-sm font-bold text-slate-950">HC</span>
+            HLCP <span class="font-normal text-slate-500">Web</span>
+        </a>
+        <p class="mt-2 text-xs text-slate-500">HomeLab Control Plane</p>
+        <nav aria-label="Hlavní navigace" class="mt-8">
+            <a href="/" aria-current="page" class="block rounded-lg bg-slate-800 px-4 py-3 text-sm font-medium">Přehled</a>
+        </nav>
+        <div class="mt-8 hidden border-t border-slate-800 pt-5 text-xs leading-6 text-slate-500 lg:block">
+            Samostatné rozhraní.<br />Kontroler a agenti zůstávají v Go.
+        </div>
+    </aside>
+    <main id="main" class="min-w-0 px-5 py-7 sm:px-9 lg:px-12 lg:py-10">
+        @Body
+    </main>
+</div>

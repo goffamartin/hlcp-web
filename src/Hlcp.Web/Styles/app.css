@@ -1,0 +1,13 @@
+@import "tailwindcss" source(none);
+@source "../Components";
+
+@theme {
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  body { @apply m-0 bg-slate-50 font-sans text-slate-900 antialiased; }
+  button, a { @apply focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-600; }
+}
+
+#blazor-error-ui { display: none; }

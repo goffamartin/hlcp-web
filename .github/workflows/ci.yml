@@ -1,0 +1,48 @@
+name: Verify HLCP Web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hlcp-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: dotnet restore Hlcp.Web.slnx --locked-mode
+      - run: dotnet build Hlcp.Web.slnx -c Release --no-restore -p:ContinuousIntegrationBuild=true
+      - run: dotnet test Hlcp.Web.slnx -c Release --no-build --no-restore
+      - run: dotnet publish src/Hlcp.Web/Hlcp.Web.csproj -c Release --no-restore -p:PublishDir=../../artifacts/publish/
+      - name: Check local CSS and publish boundary
+        shell: bash
+        run: |
+          test -s artifacts/publish/wwwroot/app.css
+          test ! -d artifacts/publish/node_modules
+          test ! -d artifacts/publish/.tools
+          test ! -e artifacts/publish/appsettings.Local.json

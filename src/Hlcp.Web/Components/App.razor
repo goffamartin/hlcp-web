@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <div id="blazor-error-ui" role="alert" class="fixed inset-x-4 bottom-4 z-50 rounded-xl bg-red-950 p-4 text-sm text-white shadow-xl">
+        Spojení s rozhraním se přerušilo. <a href="/" class="ml-2 underline">Znovu načíst</a>
+    </div>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
