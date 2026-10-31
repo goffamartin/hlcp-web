@@ -49,3 +49,16 @@ jobs:
           test ! -d artifacts/publish/.local
           test ! -d artifacts/publish/credentials
           test ! -d artifacts/publish/secrets
+      - name: Package Linux x64 candidate
+        run: sh scripts/package-linux.sh
+      - name: Smoke Linux package without controller credentials
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx openssl
+          sh scripts/smoke-linux.sh "artifacts/packages/hlcp-web-${GITHUB_SHA}-linux-x64.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hlcp-web-linux-x64
+          path: artifacts/packages/*
+          retention-days: 7
+          if-no-files-found: error

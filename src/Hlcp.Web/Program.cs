@@ -7,11 +7,15 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args.Where(argument => argument != "--set-admin-password").ToArray());
-if (!builder.Environment.IsDevelopment())
-    throw new InvalidOperationException("This host is Development-only until HTTPS and deployment hardening are completed.");
-builder.WebHost.UseUrls("http://127.0.0.1:5088");
+var hosting = HostingProfile.Configure(builder);
 var dataDirectory = Path.GetFullPath(builder.Configuration["Storage:Directory"] ?? Path.Combine(builder.Environment.ContentRootPath, ".local"));
-Directory.CreateDirectory(dataDirectory);
+if (OperatingSystem.IsWindows()) Directory.CreateDirectory(dataDirectory);
+else
+{
+    Directory.CreateDirectory(dataDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    if (hosting.Production && (File.GetUnixFileMode(dataDirectory) & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
+        throw new InvalidOperationException("Production storage must be owner-only (0700).");
+}
 builder.Services.AddDataProtection().SetApplicationName("Hlcp.Web")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
 builder.Services.AddSingleton(new AdminCredentialFile(builder.Configuration["Admin:PasswordFile"] ?? Path.Combine(dataDirectory, "admin.hash")));
@@ -22,8 +26,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.Cookie.Name = "Hlcp.Web.Admin";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
-    // HTTP is allowed only by the Development-only, forced-loopback host above.
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SecurePolicy = hosting.Production ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
     options.LoginPath = "/account/login";
     options.ExpireTimeSpan = AdminSessions.Lifetime;
     options.SlidingExpiration = false;
@@ -41,6 +44,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 });
 builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy => policy.RequireAuthenticatedUser().RequireClaim("hlcp_access", "admin")));
 builder.Services.AddRazorPages();
+builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = hosting.Production ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest);
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingAdminState>();
@@ -76,6 +80,7 @@ if (args.Contains("--set-admin-password", StringComparer.Ordinal))
     Environment.ExitCode = await PasswordSetup.RunAsync(app.Services.GetRequiredService<AdminCredentialFile>());
     return;
 }
+hosting.Use(app);
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/_blazor"))
