@@ -14,7 +14,9 @@ descriptive English commit messages. Keep changes as small validated milestones.
   accounts, a user database or roles without a new product requirement.
 - Action admission markers must be persisted before POST. Never automatically retry
   a command after ambiguous failure; look up the existing ID.
-- Keep the web host Development-only and loopback-only until LAN/HTTPS deployment is qualified.
+- Always keep the backend loopback-only. Production requires the tested explicit HTTPS
+  reverse-proxy profile and private state outside the app directory. Real LAN/VPN/HTTPS
+  acceptance is separate from synthetic qualification; never claim it before a live check.
 - Log reads use the observer credential and never COMMAND. Bound line/response/UI buffers,
   require explicit stream end, cancel on navigation/disconnect/revocation, and never auto-reconnect.
 - Add frontend styles with complete literal Tailwind class names so source scanning can find them.

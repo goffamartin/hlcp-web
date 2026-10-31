@@ -41,6 +41,22 @@
   HTML payloady zůstaly inertním textem (žádný vložený img/script ani spuštěný kód),
   řídicí znaky se nespustily. Konzole prohlížeče bez errors/warnings.
 
-Neověřeno: skutečný HLCP, scope produkčních tokenů, LAN/VPN/HTTPS, systemd, backup/
-restore a výpadek napájení. Žádná produkční aplikace nebyla restartována. MCP,
-obecné detailní stránky a produkční nasazení zůstávají mimo tyto místní milníky.
+## Příprava LAN nasazení
+
+2026-10-30: lokálně 116 úspěšných testů, locked restore, Release build bez warnings,
+portable publish i self-contained Linux x64 cross-publish. Audity NuGet/npm bez
+nalezených zranitelností. Nové testy odmítají neplatný produkční origin, zápis state
+do app adresáře, cizí proxy, chybějící HTTPS a změněný Host. Backend se nevystavuje
+na LAN; proxy profil přijímá forwarded headers jen od místního IPv4 peeru.
+
+Workflow navíc sestavuje Linux archiv s kontrolním součtem a provádí native smoke:
+spuštění bez systémového .NET a bez controller credentials, HTTPS požadavek přes
+reálný Nginx s jednorázovým testovacím certifikátem, WebSocket upgrade 101, source-IP
+ACL, Secure antiforgery cookie, anonymní API 401 a offline validaci systemd unit.
+Výsledek konkrétního běhu je v jeho GitHub Checks; tato sada nenahrazuje provozní
+přijetí na cílové VM. Nic se z workflow nenasazuje.
+
+Neověřeno: skutečný HLCP, scope produkčních tokenů, skutečné LAN/VPN/HTTPS, běh
+systemd služby na cílové VM, backup/restore a výpadek napájení. Žádná produkční
+aplikace nebyla restartována. MCP, obecné detailní stránky a skutečné produkční
+nasazení zůstávají mimo tyto místní milníky.
