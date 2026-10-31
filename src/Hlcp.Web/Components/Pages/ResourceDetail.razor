@@ -1,0 +1,39 @@
+@page "/nodes/{Node}/resources/{Resource}"
+@attribute [Authorize(Policy = "Admin")]
+@inherits InventoryPageBase
+
+<PageTitle>@Resource · @Node | HLCP Web</PageTitle>
+<nav aria-label="Drobečková navigace" class="mb-5 flex flex-wrap gap-2 text-sm text-slate-500"><a href="/" class="text-emerald-700 underline">Přehled</a><span>/</span><a href="/nodes" class="text-emerald-700 underline">Uzly</a><span>/</span><a href="@UiLinks.Node(Node)" class="text-emerald-700 underline">@Node</a><span>/</span><span aria-current="page">@Resource</span></nav>
+<header class="flex flex-wrap items-center justify-between gap-4"><h1 class="break-all text-3xl font-semibold">@Resource</h1>
+    @if (Row is { } linkRow && linkRow.Resource.Type == "container" && linkRow.Resource.Actions.Contains("logs", StringComparer.Ordinal))
+    { <a href="@UiLinks.Logs(Node, Resource)" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-emerald-700">Otevřít logy</a> }
+</header>
+<SnapshotNotice State="@State" />
+@if (Row is { } row)
+{
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-label="Stav resource">
+        <dl class="grid gap-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
+            <div><dt class="text-slate-500">Pozorovaný stav</dt><dd class="mt-2"><span class="rounded-full px-3 py-1 text-xs @UiLinks.StateColor(row.State)">@UiLinks.ResourceState(row.State)</span></dd></div>
+            <div><dt class="text-slate-500">Typ</dt><dd class="mt-1">@row.Resource.Type</dd></div>
+            <div><dt class="text-slate-500">Pozorováno</dt><dd class="mt-1">@UiLinks.Time(CurrentNode?.Resources.Resources?.FirstOrDefault(item => item.ResourceId == Resource)?.ObservedAt ?? default)</dd></div>
+            <div><dt class="text-slate-500">Tagy</dt><dd class="mt-1">@((row.Resource.Tags ?? []).Length == 0 ? "Bez tagů" : string.Join(", ", row.Resource.Tags!))</dd></div>
+        </dl>
+        <p class="mt-5 text-xs text-slate-500">Pozorovaný stav se obnovuje z agenta. Výsledek vyžádané akce se zobrazí samostatně pod ovládáním.</p>
+    </section>
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="resource-actions-heading">
+        <h2 id="resource-actions-heading" class="mb-4 text-lg font-semibold">Akce</h2>
+        <ResourceControls @key="(Node, Resource)" Node="@Node" Resource="@row.Resource" Disabled="@(Stale || row.State == ResourceDisplayState.Stale)" Completed="RefreshAfterActionAsync" />
+    </section>
+    <OperationHistory @key="(Node, Resource)" Node="@Node" Resource="@Resource" />
+    <nav aria-label="Další resources uzlu" class="mt-6 flex flex-wrap gap-3 text-sm">
+        @foreach (var sibling in (CurrentNode?.Inventory.Resources ?? []).Where(item => item.Id != Resource).Take(20))
+        { <a href="@UiLinks.Resource(Node, sibling.Id)" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-emerald-700 underline">@sibling.Id</a> }
+    </nav>
+}
+else if (State.Nodes is not null && State.Failure is null)
+{ <p role="status" class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">Resource není dostupný nebo se nenachází v povoleném rozsahu.</p> }
+@code {
+    [Parameter] public string Resource { get; set; } = "";
+    protected override string RouteKey => Node + "\0" + Resource;
+    private ResourceView? Row => Snapshot.Resources.FirstOrDefault(row => row.Resource.Id == Resource && row.NodeId == Node);
+}

@@ -1,0 +1,26 @@
+@page "/nodes/{Node}"
+@attribute [Authorize(Policy = "Admin")]
+@inherits InventoryPageBase
+
+<PageTitle>@Node | HLCP Web</PageTitle>
+<nav aria-label="Drobečková navigace" class="mb-5 flex flex-wrap gap-2 text-sm text-slate-500"><a href="/" class="text-emerald-700 underline">Přehled</a><span>/</span><a href="/nodes" class="text-emerald-700 underline">Uzly</a><span>/</span><span aria-current="page">@Node</span></nav>
+<header class="flex flex-wrap items-center justify-between gap-4"><h1 class="break-all text-3xl font-semibold">@Node</h1><button type="button" disabled="@Loading" @onclick="RefreshAsync" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Status</button></header>
+<SnapshotNotice State="@State" />
+@if (CurrentNode is { } node)
+{
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-label="Stav uzlu">
+        <dl class="grid gap-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
+            <div><dt class="text-slate-500">Spojení</dt><dd class="mt-1 font-medium">@(Stale ? "Zastaralé údaje" : UiLinks.NodeState(node.State))</dd></div>
+            <div><dt class="text-slate-500">Verze agenta</dt><dd class="mt-1">@(node.AgentVersion ?? "Neznámá")</dd></div>
+            <div><dt class="text-slate-500">Poslední aktivita</dt><dd class="mt-1">@UiLinks.Time(node.LastActivity)</dd></div>
+            <div><dt class="text-slate-500">Revize inventáře</dt><dd class="mt-1">@node.Inventory.Revision</dd></div>
+            <div class="sm:col-span-2"><dt class="text-slate-500">Capabilities</dt><dd class="mt-1 break-words">@((node.Capabilities ?? []).Length == 0 ? "Nejsou uvedené" : string.Join(", ", node.Capabilities!))</dd></div>
+        </dl>
+    </section>
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="node-resources-heading">
+        <h2 id="node-resources-heading" class="text-lg font-semibold">Resources · @Snapshot.Resources.Count</h2>
+        @if (Snapshot.Resources.Count == 0) { <p class="mt-4 text-sm text-slate-500">Uzel nemá žádné dostupné resources.</p> }
+        else { <ResourceTable Rows="@Snapshot.Resources" Stale="@Stale" /> }
+    </section>
+    <OperationHistory @key="Node" Node="@Node" />
+}

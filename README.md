@@ -6,19 +6,20 @@ A future MCP endpoint will share the application services, not the UI components
 
 ## Status
 
-Local management milestone implemented. This is not deployed or production-ready.
+The owner has confirmed HTTPS access and container log reads on the HomeLab deployment.
 HLCP controller/agents remain in Go/CBOR; this repository is a separate client.
-The UI supports one admin login, a refreshing dashboard, node/tag filters, individual
-allowlisted resource actions with preview/confirmation, and web-originated operation
-history/result lookup, and filtered container log history/live streaming. No Identity
+The UI supports one admin login, a refreshing dashboard, node/tag filters, linked node
+and resource detail pages, individual allowlisted actions, command output and
+web-originated operation history/result lookup, and filtered container log history/live streaming. No Identity
 account system, roles or database is required. MCP remains planned. Production requires
 an explicit canonical HTTPS origin, private external state and a trusted local reverse
-proxy; the backend always stays on loopback. Real HomeLab acceptance is still pending.
+proxy; the backend always stays on loopback. Full VPN and backup/restore acceptance
+remain pending. See [validation](docs/validation.md) for the scope of each check.
 
 Controller access requires explicitly configured server-side token files. Without
 them the dashboard displays a connection/configuration error, never demo data.
-Automated tests and browser QA use synthetic APIs only; real HomeLab acceptance
-and production deployment have not been performed.
+Automated tests and browser QA use synthetic APIs only. Newly added detail pages
+and action-output rendering require an updated web package on the target VM.
 
 See the [implementation plan (Czech)](docs/implementation-plan.md) for architecture,
 milestones, acceptance checks and explicit deployment decisions.

@@ -15,7 +15,8 @@ public sealed record CommandResult
     public required string CommandId { get; init; }
     public required bool Success { get; init; }
     public required string Code { get; init; }
-    // Deliberately omit message: adapter output can contain sensitive application text.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Message { get; init; }
 }
 public sealed record CommandProgress
 {

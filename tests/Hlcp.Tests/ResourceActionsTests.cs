@@ -48,6 +48,27 @@ public sealed class ResourceActionsTests
     }
 
     [Fact]
+    public async Task ConcurrentJournalInstancesClaimExactlyOneSubmissionMarker()
+    {
+        await using var factory = new TestWeb(); factory.CreateClient();
+        var directory = Path.Combine(factory.Root, "operations");
+        var journal = factory.Services.GetRequiredService<OperationJournal>();
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var operation = await journal.PrepareAsync("synthetic-node", "synthetic-container", "status", default);
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var contenders = Enumerable.Range(0, 32).Select(async _ =>
+            {
+                await start.Task;
+                return await new OperationJournal(directory).MarkSubmittedAsync(operation.Id);
+            }).ToArray();
+            start.SetResult();
+            Assert.Single(await Task.WhenAll(contenders), claimed => claimed);
+            Assert.False(await new OperationJournal(directory).MarkSubmittedAsync(operation.Id));
+        }
+    }
+
+    [Fact]
     public async Task LostResponseIsLookedUpWithoutAnotherSubmissionEvenWithNewJournalInstance()
     {
         await using var factory = new TestWeb();

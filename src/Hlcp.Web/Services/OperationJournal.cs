@@ -44,17 +44,32 @@ public sealed class OperationJournal(string directory)
 
     public async Task<bool> MarkSubmittedAsync(string id)
     {
-        try { await WriteNewAsync(PathFor(id, ".submitted"), new { SubmittedAt = DateTimeOffset.UtcNow }, CancellationToken.None); return true; }
-        catch (IOException) when (File.Exists(PathFor(id, ".submitted"))) { return false; }
+        var path = PathFor(id, ".submitted");
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.Read, Options = FileOptions.WriteThrough };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        FileStream stream;
+        // Claim the final marker with exclusive creation. File.Move(overwrite: false)
+        // may race on Unix between its existence check and rename. Marker contents
+        // are never read: even a partial marker must prevent a second submission.
+        try { stream = new FileStream(path, options); }
+        catch (IOException) when (File.Exists(path)) { return false; }
+        await using (stream)
+        {
+            await JsonSerializer.SerializeAsync(stream, new { SubmittedAt = DateTimeOffset.UtcNow }, Json);
+            await stream.FlushAsync();
+            stream.Flush(flushToDisk: true);
+        }
+        return true;
     }
 
     public async Task SaveResultAsync(string id, CommandResult result)
     {
-        try { await WriteNewAsync(PathFor(id, ".result.json"), result, CancellationToken.None); }
+        // Adapter output is returned to the current UI only, never persisted in the journal.
+        try { await WriteNewAsync(PathFor(id, ".result.json"), result with { Message = null }, CancellationToken.None); }
         catch (IOException) when (File.Exists(PathFor(id, ".result.json"))) { }
     }
 
-    public async Task<OperationStatus[]> ListAsync(CancellationToken cancellationToken)
+    public async Task<OperationStatus[]> ListAsync(CancellationToken cancellationToken, string? node = null, string? resource = null)
     {
         if (!Directory.Exists(directory)) return [];
         var operations = new List<WebOperation>();
@@ -64,7 +79,7 @@ public sealed class OperationJournal(string directory)
             operations.Add(await ReadAsync(id, cancellationToken));
         }
         var result = new List<OperationStatus>();
-        foreach (var item in operations.OrderByDescending(item => item.CreatedAt).Take(50))
+        foreach (var item in operations.Where(item => node is null || item.Node == node).Where(item => resource is null || item.Resource == resource).OrderByDescending(item => item.CreatedAt).Take(50))
         {
             CommandResult? terminal = null;
             var file = PathFor(item.Id, ".result.json");
