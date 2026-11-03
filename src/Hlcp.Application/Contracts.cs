@@ -6,6 +6,7 @@ public sealed record NodeSnapshot
     public required string NodeId { get; init; }
     public required string State { get; init; }
     public string? AgentVersion { get; init; }
+    public string[]? Capabilities { get; init; }
     public DateTimeOffset LastActivity { get; init; }
     public required ResourceInventory Inventory { get; init; }
     public required ObservationSnapshot Resources { get; init; }

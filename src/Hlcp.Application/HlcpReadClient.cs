@@ -58,16 +58,30 @@ public sealed class HlcpReadClient
     public async Task<IReadOnlyList<NodeSnapshot>> GetNodesAsync(CancellationToken cancellationToken = default)
     {
         var nodes = await GetAsync<NodeSnapshot[]>("v1/nodes", false, cancellationToken);
-        if (nodes.Any(node => node is null || !ValidIdentifier(node.NodeId) || string.IsNullOrEmpty(node.State) || node.Inventory is null || node.Resources is null) ||
+        if (nodes.Any(node => node is null) ||
             nodes.Select(node => node.NodeId).Distinct(StringComparer.Ordinal).Count() != nodes.Length)
             throw new HlcpReadException(HlcpFailure.InvalidResponse);
-        foreach (var node in nodes)
-        {
-            ValidateResources(node.Inventory.Resources ?? []);
-            if ((node.Resources.Resources ?? []).Any(state => state is null || !ValidIdentifier(state.ResourceId) || string.IsNullOrEmpty(state.State)))
-                throw new HlcpReadException(HlcpFailure.InvalidResponse);
-        }
+        foreach (var node in nodes) ValidateNode(node);
         return nodes;
+    }
+
+    public async Task<NodeSnapshot> GetNodeAsync(string node, CancellationToken cancellationToken = default)
+    {
+        if (!ValidIdentifier(node)) throw new ArgumentException("Invalid node identifier.", nameof(node));
+        var result = await GetAsync<NodeSnapshot>("v1/nodes/" + Uri.EscapeDataString(node), false, cancellationToken);
+        ValidateNode(result);
+        if (result.NodeId != node) throw new HlcpReadException(HlcpFailure.InvalidResponse);
+        return result;
+    }
+
+    private static void ValidateNode(NodeSnapshot node)
+    {
+        if (!ValidIdentifier(node.NodeId) || string.IsNullOrEmpty(node.State) || node.Inventory is null || node.Resources is null ||
+            node.Capabilities is { Length: > 64 } || (node.Capabilities ?? []).Any(value => !ValidIdentifier(value)))
+            throw new HlcpReadException(HlcpFailure.InvalidResponse);
+        ValidateResources(node.Inventory.Resources ?? []);
+        if ((node.Resources.Resources ?? []).Any(state => state is null || !ValidIdentifier(state.ResourceId) || string.IsNullOrEmpty(state.State)))
+            throw new HlcpReadException(HlcpFailure.InvalidResponse);
     }
 
     public async Task<IReadOnlyList<ResourceDescriptor>> GetResourcesAsync(string node, IEnumerable<string>? tags = null, CancellationToken cancellationToken = default)
@@ -121,7 +135,8 @@ public sealed class HlcpReadClient
 
     private static void ValidateResult(string id, CommandResult result)
     {
-        if (result.CommandId != id || !ValidIdentifier(result.Code) || result.Success != (result.Code == "OK"))
+        if (result.CommandId != id || !ValidIdentifier(result.Code) || result.Success != (result.Code == "OK") ||
+            result.Message is null || System.Text.Encoding.UTF8.GetByteCount(result.Message) > 4096)
             throw new HlcpReadException(HlcpFailure.InvalidResponse);
     }
 

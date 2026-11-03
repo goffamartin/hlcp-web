@@ -175,6 +175,7 @@ public sealed class HlcpReadClientTests
     [InlineData("{\"command_id\":\"foreign\",\"success\":true,\"code\":\"OK\"}")]
     [InlineData("{\"command_id\":\"op\",\"success\":false,\"code\":\"OK\"}")]
     [InlineData("{\"command_id\":\"op\",\"code\":\"OK\"}")]
+    [InlineData("{\"command_id\":\"op\",\"success\":true,\"code\":\"OK\"}")]
     public async Task CommandResultsMustMatchIdAndSuccessContract(string body)
     {
         using var http = Http(request =>
@@ -193,6 +194,30 @@ public sealed class HlcpReadClientTests
         using var http = Http(_ => Json("""{"node":"n","resource":"other","action":"restart","command":{"command_id":"op","resource_id":"r","action":"restart"}}"""));
         var error = await Assert.ThrowsAsync<HlcpReadException>(() => Client(http).PreviewAsync("n", new("op", "r", "restart")));
         Assert.Equal(HlcpFailure.InvalidResponse, error.Failure);
+    }
+
+    [Fact]
+    public async Task NodeDetailUsesTargetedGetAndRejectsForeignNodeResponse()
+    {
+        using var parsed = System.Text.Json.JsonDocument.Parse(NodeJson);
+        var node = parsed.RootElement[0].GetRawText();
+        using var http = Http(request => { Assert.Equal(HttpMethod.Get, request.Method); Assert.Equal("/v1/nodes/debian-01", request.RequestUri!.AbsolutePath); return Json(node); });
+        Assert.Equal("debian-01", (await Client(http).GetNodeAsync("debian-01")).NodeId);
+        using var foreign = Http(_ => Json(node));
+        var error = await Assert.ThrowsAsync<HlcpReadException>(() => Client(foreign).GetNodeAsync("different"));
+        Assert.Equal(HlcpFailure.InvalidResponse, error.Failure);
+    }
+
+    [Theory]
+    [InlineData(2048, false)]
+    [InlineData(0, false)]
+    [InlineData(2049, true)]
+    public async Task CommandOutputRespectsUtf8ProtocolLimit(int count, bool reject)
+    {
+        var message = new string('č', count);
+        using var http = Http(_ => Json(System.Text.Json.JsonSerializer.Serialize(new { command_id = "op", success = true, code = "OK", message })));
+        if (reject) Assert.Equal(HlcpFailure.InvalidResponse, (await Assert.ThrowsAsync<HlcpReadException>(() => Client(http).SubmitAsync("n", new("op", "r", "status")))).Failure);
+        else Assert.Equal(message, (await Client(http).SubmitAsync("n", new("op", "r", "status"))).Message);
     }
 
     private static HlcpReadClient Client(HttpClient http) => new(http, new("http://127.0.0.1:9444"), new TokenSource());
