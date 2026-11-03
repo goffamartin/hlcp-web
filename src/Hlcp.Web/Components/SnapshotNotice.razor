@@ -1,0 +1,13 @@
+@if (State.Failure is { } failure)
+{
+    <div role="status" class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+        <p>@(failure is HlcpFailure.NotFound or HlcpFailure.AccessDenied ? "Cíl není dostupný nebo přístup není povolený." : "Aktuální údaje se nepodařilo ověřit.")</p>
+        @if (State.Nodes is not null) { <p>Zobrazené údaje jsou zastaralé; ovládání je nedostupné.</p> }
+        <p class="text-xs">Kód: @failure</p>
+    </div>
+}
+else if (State.Nodes is null)
+{ <p role="status" class="mt-6 text-sm text-slate-500">Načítám údaje kontroleru…</p> }
+@if (State.CapturedAt is { } captured)
+{ <p class="mt-4 text-xs text-slate-500">Poslední úspěšné čtení: @UiLinks.Time(captured)</p> }
+@code { [Parameter, EditorRequired] public DashboardState State { get; set; } = default!; }

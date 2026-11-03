@@ -4,6 +4,8 @@ using Hlcp.Web.Security;
 
 namespace Hlcp.Web.Services;
 
+public sealed record PreparedResourceAction(WebOperation Operation, bool ReadOnly);
+
 public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inventory, OperationJournal journal, IHttpClientFactory http, IConfiguration configuration)
 {
     public bool Enabled => !string.IsNullOrWhiteSpace(configuration["Hlcp:OperatorTokenFile"]);
@@ -15,12 +17,15 @@ public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inven
     }
 
     public async Task<WebOperation> PrepareAsync(ClaimsPrincipal user, string node, string resource, string action, CancellationToken cancellationToken)
+        => (await PrepareWithPreviewAsync(user, node, resource, action, cancellationToken)).Operation;
+
+    public async Task<PreparedResourceAction> PrepareWithPreviewAsync(ClaimsPrincipal user, string node, string resource, string action, CancellationToken cancellationToken)
     {
         await AuthorizeAsync(user, cancellationToken);
         await VerifyAllowlistAsync(node, resource, action, cancellationToken);
         var operation = await journal.PrepareAsync(node, resource, action, cancellationToken);
-        await Operator().PreviewAsync(node, operation.Command, cancellationToken);
-        return operation;
+        var preview = await Operator().PreviewAsync(node, operation.Command, cancellationToken);
+        return new(operation, preview.ReadOnly);
     }
 
     private async Task VerifyAllowlistAsync(string node, string resource, string action, CancellationToken cancellationToken)
@@ -30,7 +35,7 @@ public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inven
             throw new HlcpReadException(HlcpFailure.CommandRefused);
     }
 
-    public async Task<CommandResult?> ConfirmAsync(ClaimsPrincipal user, string id, CancellationToken cancellationToken)
+    public async Task<CommandResult?> ConfirmAsync(ClaimsPrincipal user, string id, CancellationToken cancellationToken, bool requireReadOnly = false)
     {
         await AuthorizeAsync(user, cancellationToken);
         var operation = await journal.ReadAsync(id, cancellationToken);
@@ -38,7 +43,8 @@ public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inven
             throw new HlcpReadException(HlcpFailure.CommandRefused);
         await VerifyAllowlistAsync(operation.Node, operation.Resource, operation.Action, cancellationToken);
         var client = Operator();
-        await client.PreviewAsync(operation.Node, operation.Command, cancellationToken);
+        var preview = await client.PreviewAsync(operation.Node, operation.Command, cancellationToken);
+        if (requireReadOnly && !preview.ReadOnly) throw new HlcpReadException(HlcpFailure.CommandRefused);
         if (!await journal.MarkSubmittedAsync(id)) return await LookupAsync(user, id, cancellationToken);
         // Marker was persisted before POST. Any error after this point is an unknown outcome;
         // reconnect/double-click can only look up this same ID, never automatically POST again.
@@ -49,16 +55,16 @@ public sealed class ResourceActions(AdminSessions sessions, HlcpReadClient inven
 
     public async Task<CommandResult?> LookupAsync(ClaimsPrincipal user, string id, CancellationToken cancellationToken)
     {
-        await AuthorizeAsync(user, cancellationToken);
+        if (!await sessions.IsValidAsync(user, cancellationToken)) throw new UnauthorizedAccessException();
         var operation = await journal.ReadAsync(id, cancellationToken);
-        var result = (await Operator().LookupAsync(operation.Node, operation.Command, cancellationToken)).Result;
+        var result = (await inventory.LookupAsync(operation.Node, operation.Command, cancellationToken)).Result;
         if (result is not null) await journal.SaveResultAsync(id, result);
         return result;
     }
 
-    public async Task<OperationStatus[]> ListAsync(ClaimsPrincipal user, CancellationToken cancellationToken)
+    public async Task<OperationStatus[]> ListAsync(ClaimsPrincipal user, CancellationToken cancellationToken, string? node = null, string? resource = null)
     {
         if (!await sessions.IsValidAsync(user, cancellationToken)) throw new UnauthorizedAccessException();
-        return await journal.ListAsync(cancellationToken);
+        return await journal.ListAsync(cancellationToken, node, resource);
     }
 }

@@ -1,0 +1,8 @@
+<div role="region" aria-label="Výsledek akce" class="mt-4 min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <p class="text-sm font-semibold @(Result.Success ? "text-emerald-800" : "text-red-800")">@(Result.Success ? "Akce dokončena" : "Akce skončila chybou") · @Result.Code</p>
+    <p class="mt-1 break-all font-mono text-xs text-slate-500">ID: @Result.CommandId</p>
+    @if (Result.Message is null) { <p class="mt-3 text-sm text-slate-500">Textový výstup není načtený. Podrobnosti lze dohledat v kontroleru.</p> }
+    else if (Result.Message.Length == 0) { <p class="mt-3 text-sm text-slate-500">Akce vrátila prázdný textový výstup.</p> }
+    else { <pre dir="ltr" class="mt-3 max-h-64 max-w-full overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-100 [overflow-wrap:anywhere]">@CommandOutput.Format(Result.Message)</pre> }
+</div>
+@code { [Parameter, EditorRequired] public CommandResult Result { get; set; } = default!; }
