@@ -1,9 +1,9 @@
-# Nasazení: hlcp.example.com
+# Nasazení HLCP Web v místní síti
 
 Připravený profil: web jako vlastní neprivilegovaná systemd služba na VM kontroleru,
 Nginx na 443, Kestrel jen `127.0.0.1:5088`, Go API dál `127.0.0.1:9444`.
-Tento návod ani vytvoření balíčku samo nic neinstaluje. Skutečné nasazení dosud
-neproběhlo; první kroky provedeme po kontrole aktuálního stavu VM.
+V příkladech nahraď `hlcp.example.com` vlastním jménem a použij stejné jméno
+v DNS, TLS certifikátu, konfiguraci Nginxu a `Hosting__PublicOrigin`.
 
 ## 1. Nejprve zjisti stav
 
@@ -17,9 +17,8 @@ systemctl is-active nginx caddy || true
 sudo ss -lntp '( sport = :80 or sport = :443 or sport = :5088 )'
 ```
 
-Ověř IP kontroleru a volné porty. Dřívější konfigurace měla 192.0.2.15; neber ji
-bez této kontroly jako aktuální. Zjistíme také subnet LAN a zdrojové IP/CIDR příchozího
-WireGuard provozu. Neinstaluj druhou proxy na obsazené porty a neměň ostatní aplikace.
+Ověř IP kontroleru, volné porty a zdrojové rozsahy LAN nebo VPN, ze kterých
+mají klienti přístup.
 
 ## 2. Privátní DNS
 
@@ -35,7 +34,7 @@ nevytvářej A/AAAA záznam ani Tunnel pro tento web. DNS rewrite není přístu
 
 ## 3. Důvěryhodný certifikát bez otevření portů do internetu
 
-Nameservery example.com byly ověřeny jako Cloudflare. Použijeme Let's Encrypt DNS-01:
+Pokud svou zónu spravuješ v Cloudflare, můžeš použít Let's Encrypt DNS-01:
 Certbot dočasně vytvoří TXT `_acme-challenge.hlcp.example.com`; web nemusí být
 dostupný z internetu. Certifikát/hostname bude veřejně dohledatelný v CT.
 
@@ -120,7 +119,10 @@ s jinými aplikacemi a nemaž jej při upgradu.
 
 ## 6. Proxy a služba
 
-V rozbaleném `deploy/nginx.conf` nahraď CLIENT_LAN_CIDR a CLIENT_VPN_CIDR skutečnými
+V rozbaleném `deploy/nginx.conf` nastav vlastní hostname a cesty k certifikátu.
+V souboru `deploy/hlcp-web.service` nastav stejné HTTPS jméno v `Hosting__PublicOrigin`
+a vlastní tagy aplikací, pokud je chceš na dashboardu zobrazit.
+Nahraď CLIENT_LAN_CIDR a CLIENT_VPN_CIDR skutečnými
 rozsahy. Nehádej je; podle routování může WireGuard přicházet pod LAN IP routeru.
 Bez nahrazení konfigurace záměrně neprojde nginx -t. Proxy přijímá jen zvolené
 zdrojové adresy, podporuje WebSocket a nebufferuje výpis. Backend nepřijímá

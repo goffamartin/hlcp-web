@@ -13,9 +13,6 @@ Environment=Hosting__PublicOrigin=https://hlcp.example.com
 Environment=Storage__Directory=/var/lib/hlcp-web
 Environment=Hlcp__Endpoint=http://127.0.0.1:9444
 Environment=Hlcp__TokenFile=%d/observer.token
-Environment=Dashboard__ApplicationTags__0=sample-app
-Environment=Dashboard__ApplicationTags__1=second-app
-Environment=Dashboard__ApplicationTags__2=infrastructure
 LoadCredential=observer.token:/etc/hlcp-web/observer.token
 StateDirectory=hlcp-web
 StateDirectoryMode=0700
